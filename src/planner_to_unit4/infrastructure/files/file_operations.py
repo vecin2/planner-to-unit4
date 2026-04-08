@@ -1,0 +1,6 @@
+from typing import Protocol
+
+
+class FileOperations(Protocol):
+    def exists(self, path: str) -> bool: ...
+    def move(self, source: str, destination: str) -> None: ...
