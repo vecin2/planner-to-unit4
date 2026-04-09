@@ -11,6 +11,9 @@ class LandingStorage:
     def source_exists(self) -> bool:
         return self.file_operations.exists(self.source_path)
 
+    def read_source(self) -> str:
+        return self.file_operations.read(self.source_path)
+
     def build_snapshot_path(self, pipeline_run_id: str) -> str:
         return f"{self.snapshot_root_path}/run_id={pipeline_run_id}/Plan_Data.json"
 

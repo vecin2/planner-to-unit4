@@ -9,3 +9,6 @@ class LocalFileOperations:
     def move(self, source: str, destination: str) -> None:
         Path(destination).parent.mkdir(parents=True, exist_ok=True)
         shutil.move(source, destination)
+
+    def read(self, path: str) -> str:
+        return Path(path).read_text()
