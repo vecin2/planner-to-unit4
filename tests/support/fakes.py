@@ -1,10 +1,13 @@
-from typing import Any
-
-
 class FakePlanningService:
     def __init__(self) -> None:
         self.batches: list[list[dict]] = []
 
-    def send_batch(self, batch: list[dict]) -> dict[str, Any]:
+    def send_batch(self, batch: list[dict]) -> dict[str, str | int | None]:
         self.batches.append(batch)
-        return {"job_id": "fake-job", "status": "SUBMITTED"}
+        return {
+            "status": "SUBMITTED",
+            "order_no": "fake-order",
+            "http_status": 200,
+            "message": None,
+            "error_message": None,
+        }
