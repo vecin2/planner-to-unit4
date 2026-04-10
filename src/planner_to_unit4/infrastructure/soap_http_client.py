@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Callable, Protocol
 
 
 class HttpResponse(Protocol):
@@ -6,11 +6,4 @@ class HttpResponse(Protocol):
     text: str
 
 
-class HttpPost(Protocol):
-    def __call__(
-        self,
-        url: str,
-        data: str,
-        headers: dict[str, str],
-        timeout: int,
-    ) -> HttpResponse: ...
+HttpPost = Callable[[str, str, dict[str, str], int], HttpResponse]

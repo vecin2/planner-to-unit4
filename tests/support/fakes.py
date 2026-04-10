@@ -9,5 +9,4 @@ class FakePlanningService:
             "order_no": "fake-order",
             "http_status": 200,
             "message": None,
-            "error_message": None,
         }

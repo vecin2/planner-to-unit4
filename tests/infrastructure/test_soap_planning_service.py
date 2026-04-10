@@ -37,12 +37,9 @@ def test_send_batch_returns_order_no_on_success() -> None:
 
     service = SoapPlanningService(
         endpoint="https://example.test/service.svc",
-        soap_action="http://services.agresso.com/PlanningService/ObjectPostBack",
         username="user",
         client="bi",
         password="secret",
-        version="ADJ",
-        batch="WKD",
         http_post=fake_post,
     )
 
@@ -60,6 +57,8 @@ def test_send_batch_returns_order_no_on_success() -> None:
                 "Currency": "USD",
                 "Period": "202601",
                 "CurAmount": "12.25",
+                "Version": "ADJ",
+                "Batch": "WKD",
             }
         ]
     )
@@ -67,4 +66,8 @@ def test_send_batch_returns_order_no_on_success() -> None:
     assert result["status"] == "SUBMITTED"
     assert result["order_no"] == "51"
     assert result["http_status"] == 200
+    assert (
+        result["message"]
+        == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    )
     assert "SOAPAction" in captured["headers"]

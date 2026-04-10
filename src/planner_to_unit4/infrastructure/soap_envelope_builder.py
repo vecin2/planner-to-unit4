@@ -24,7 +24,7 @@ POSTBACK_FIELDS_IN_ORDER = [
 ]
 
 
-def build_postback_items(rows: list[dict], version: str, batch: str) -> list[dict]:
+def build_postback_items(rows: list[dict]) -> list[dict]:
     items = []
     for idx, row in enumerate(rows, start=1):
         item = {
@@ -43,8 +43,8 @@ def build_postback_items(rows: list[dict], version: str, batch: str) -> list[dic
         }
         item["TransactionId"] = -idx
         item["TransactionSetup"] = _transaction_setup(item["Client"])
-        item["Version"] = version
-        item["Batch"] = batch
+        item["Version"] = safe_str(row.get("Version"))
+        item["Batch"] = safe_str(row.get("Batch"))
         item["Submit"] = 0
         items.append(item)
     return items

@@ -19,10 +19,12 @@ def test_build_postback_items_sets_required_fields() -> None:
             "Currency": "USD",
             "Period": "202601",
             "CurAmount": "12.25",
+            "Version": "ADJ",
+            "Batch": "WKD",
         }
     ]
 
-    items = build_postback_items(rows, version="ADJ", batch="WKD")
+    items = build_postback_items(rows)
 
     assert items[0]["TransactionId"] == -1
     assert items[0]["TransactionSetup"] == "STD"
@@ -47,10 +49,12 @@ def test_build_soap_envelope_respects_field_order() -> None:
             "Currency": "USD",
             "Period": "202601",
             "CurAmount": "12.25",
+            "Version": "ADJ",
+            "Batch": "WKD",
         }
     ]
 
-    items = build_postback_items(rows, version="ADJ", batch="WKD")
+    items = build_postback_items(rows)
     envelope = build_soap_envelope(
         items=items,
         username="user",

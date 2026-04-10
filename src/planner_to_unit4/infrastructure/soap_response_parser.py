@@ -6,8 +6,8 @@ from xml.etree import ElementTree
 def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
     try:
         root = ElementTree.fromstring(xml_text)
-    except ElementTree.ParseError:
-        return {"order_no": None, "message": None}
+    except ElementTree.ParseError as exc:
+        return {"order_no": None, "message": f"ParseError: {exc}"}
 
     order_no = None
     message = None
