@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-from typing import Protocol
-
 from planner_to_unit4.infrastructure.budget_variance_reader import BudgetVarianceReader
 
 
-class BudgetVarianceItemsProvider(Protocol):
-    def read_items(self) -> list[dict]:
-        ...
-
-
-class DefaultBudgetVarianceItemsProvider:
+class BudgetVarianceItemsProvider:
     def __init__(self, reader: BudgetVarianceReader, version: str, batch: str) -> None:
         self.reader = reader
         self.version = version

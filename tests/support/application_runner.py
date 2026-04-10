@@ -1,15 +1,29 @@
 from __future__ import annotations
 
 from planner_to_unit4.application import process_budget_variance
+from planner_to_unit4.infrastructure.budget_variance_items_provider import (
+    BudgetVarianceItemsProvider,
+)
+from tests.support.fake_budget_variance_reader import FakeBudgetVarianceReader
 from tests.support.fakes import FakePlanningService
+
+
 class ApplicationRunner:
     def __init__(
         self,
-        items_provider,
+        rows: list[dict],
+        version: str,
+        batch: str,
+        snapshot_path: str,
         max_batch_size: int = 2,
-        snapshot_path: str | None = None,
     ) -> None:
-        self.items_provider = items_provider
+        budget_variance_reader = FakeBudgetVarianceReader()
+        budget_variance_reader.set_rows(rows)
+        self.items_provider = BudgetVarianceItemsProvider(
+            reader=budget_variance_reader,
+            version=version,
+            batch=batch,
+        )
         self.max_batch_size = max_batch_size
         self.snapshot_path = snapshot_path
         self.planning_service = FakePlanningService()

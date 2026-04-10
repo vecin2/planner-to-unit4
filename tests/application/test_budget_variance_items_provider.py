@@ -1,5 +1,5 @@
-from planner_to_unit4.application.budget_variance_items_provider import (
-    DefaultBudgetVarianceItemsProvider,
+from planner_to_unit4.infrastructure.budget_variance_items_provider import (
+    BudgetVarianceItemsProvider,
 )
 from tests.support.fake_budget_variance_reader import FakeBudgetVarianceReader
 
@@ -24,7 +24,7 @@ def test_items_provider_enriches_rows_with_version_and_batch() -> None:
         ]
     )
 
-    provider = DefaultBudgetVarianceItemsProvider(reader, version="ADJ", batch="WKD")
+    provider = BudgetVarianceItemsProvider(reader, version="ADJ", batch="WKD")
     items = provider.read_items()
 
     assert items[0]["Version"] == "ADJ"

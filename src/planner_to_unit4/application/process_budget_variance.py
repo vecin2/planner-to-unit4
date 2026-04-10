@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from planner_to_unit4.application.budget_variance_items_provider import (
+from planner_to_unit4.infrastructure.budget_variance_items_provider import (
     BudgetVarianceItemsProvider,
 )
 from planner_to_unit4.infrastructure.planning_service import PlanningService
@@ -12,15 +12,15 @@ from planner_to_unit4.infrastructure.planning_service import PlanningService
 class ProcessBudgetVarianceResult:
     pipeline_run_id: str
     status: str
-    snapshot_path: str | None = None
+    snapshot_path: str
 
 
 def run(
     items_provider: BudgetVarianceItemsProvider,
     pipeline_run_id: str,
     planning_service: PlanningService,
+    snapshot_path: str,
     max_batch_size: int = 15000,
-    snapshot_path: str | None = None,
 ) -> ProcessBudgetVarianceResult:
     items = items_provider.read_items()
 
