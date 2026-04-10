@@ -20,20 +20,15 @@ class SoapPlanningService(PlanningService):
         username: str,
         client: str,
         password: str,
+        http_post: HttpPost,
         timeout: int = 60,
-        http_post: HttpPost | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.username = username
         self.client = client
         self.password = password
         self.timeout = timeout
-        if http_post is None:
-            import requests
-
-            self.http_post = requests.post
-        else:
-            self.http_post = http_post
+        self.http_post = http_post
 
     def send_batch(self, batch: list[dict]) -> dict[str, str | int | None]:
         items = build_postback_items(batch)

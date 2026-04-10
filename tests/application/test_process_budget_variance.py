@@ -30,6 +30,13 @@ def make_row(
     }
 
 
+def with_version_and_batch(row: dict, version: str, batch: str) -> dict:
+    enriched = dict(row)
+    enriched["Version"] = version
+    enriched["Batch"] = batch
+    return enriched
+
+
 def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
     row1 = make_row(description="Row1", amount=10)
     row2 = make_row(description="Row2", amount=20)
@@ -38,9 +45,14 @@ def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
 
     run_id = "fabric-run-123"
     max_batch_size = 3
+    version = "ADJ"
+    batch = "WKD"
 
     expected_batches = [
-        [row1, row2]
+        [
+            with_version_and_batch(row1, version, batch),
+            with_version_and_batch(row2, version, batch),
+        ]
     ]
 
     budget_variance_reader = FakeBudgetVarianceReader()
@@ -48,6 +60,8 @@ def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
 
     runner = ApplicationRunner(
         budget_variance_reader=budget_variance_reader,
+        version=version,
+        batch=batch,
         max_batch_size=max_batch_size,
     )
 
@@ -64,10 +78,15 @@ def test_process_budget_variance_submits_multiple_batches_when_batch_size_is_sma
 
     run_id = "fabric-run-456"
     max_batch_size = 2
+    version = "ADJ"
+    batch = "WKD"
 
     expected_batches = [
-        [row1, row2],
-        [row3]
+        [
+            with_version_and_batch(row1, version, batch),
+            with_version_and_batch(row2, version, batch),
+        ],
+        [with_version_and_batch(row3, version, batch)]
     ]
 
     budget_variance_reader = FakeBudgetVarianceReader()
@@ -75,6 +94,8 @@ def test_process_budget_variance_submits_multiple_batches_when_batch_size_is_sma
 
     runner = ApplicationRunner(
         budget_variance_reader=budget_variance_reader,
+        version=version,
+        batch=batch,
         max_batch_size=max_batch_size,
     )
 

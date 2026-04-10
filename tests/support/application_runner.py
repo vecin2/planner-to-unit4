@@ -6,10 +6,14 @@ class ApplicationRunner:
     def __init__(
         self,
         budget_variance_reader,
+        version: str,
+        batch: str,
         max_batch_size: int = 2,
         snapshot_path: str | None = None,
     ) -> None:
         self.budget_variance_reader = budget_variance_reader
+        self.version = version
+        self.batch = batch
         self.max_batch_size = max_batch_size
         self.snapshot_path = snapshot_path
         self.planning_service = FakePlanningService()
@@ -19,6 +23,8 @@ class ApplicationRunner:
             budget_variance_reader=self.budget_variance_reader,
             pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
+            version=self.version,
+            batch=self.batch,
             max_batch_size=self.max_batch_size,
             snapshot_path=self.snapshot_path,
         )
