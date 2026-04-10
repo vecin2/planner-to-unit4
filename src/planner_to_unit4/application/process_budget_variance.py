@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from planner_to_unit4.infrastructure.planning_service import PlanningService
+
 
 @dataclass(frozen=True)
 class ProcessBudgetVarianceResult:
@@ -13,7 +15,7 @@ class ProcessBudgetVarianceResult:
 def run(
     budget_variance_reader,
     pipeline_run_id: str,
-    planning_service,
+    planning_service: PlanningService,
     max_batch_size: int = 15000,
     snapshot_path: str | None = None,
 ) -> ProcessBudgetVarianceResult:
@@ -31,6 +33,6 @@ def run(
     )
 
 
-def _chunk_rows(rows, batch_size):
+def _chunk_rows(rows: list, batch_size: int):
     for i in range(0, len(rows), batch_size):
         yield rows[i : i + batch_size]

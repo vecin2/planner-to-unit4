@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from planner_to_unit4.application import process_budget_variance
 from tests.support.fakes import FakePlanningService
-from typing import List, Any
-
-
 class ApplicationRunner:
     def __init__(
         self,
@@ -26,6 +23,6 @@ class ApplicationRunner:
             snapshot_path=self.snapshot_path,
         )
 
-    def assert_batches_sent(self, expected_batches: List[List[Any]]) -> None:
+    def assert_batches_sent(self, expected_batches: list[list[dict]]) -> None:
         actual_batches = self.planning_service.batches
         assert actual_batches == expected_batches
