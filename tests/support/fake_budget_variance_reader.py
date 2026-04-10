@@ -1,12 +1,9 @@
-from typing import List
-
-
 class FakeBudgetVarianceReader:
     def __init__(self) -> None:
-        self._rows: List[dict] = []
+        self._rows: list[dict] = []
 
-    def set_rows(self, rows: List[dict]) -> None:
+    def set_rows(self, rows: list[dict]) -> None:
         self._rows = rows
 
-    def read_rows(self) -> List[dict]:
+    def read_rows(self) -> list[dict]:
         return self._rows
