@@ -5,26 +5,20 @@ from tests.support.fakes import FakePlanningService
 class ApplicationRunner:
     def __init__(
         self,
-        budget_variance_reader,
-        version: str,
-        batch: str,
+        items_provider,
         max_batch_size: int = 2,
         snapshot_path: str | None = None,
     ) -> None:
-        self.budget_variance_reader = budget_variance_reader
-        self.version = version
-        self.batch = batch
+        self.items_provider = items_provider
         self.max_batch_size = max_batch_size
         self.snapshot_path = snapshot_path
         self.planning_service = FakePlanningService()
 
     def run_process_budget_variance(self, pipeline_run_id: str):
         return process_budget_variance.run(
-            budget_variance_reader=self.budget_variance_reader,
+            items_provider=self.items_provider,
             pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
-            version=self.version,
-            batch=self.batch,
             max_batch_size=self.max_batch_size,
             snapshot_path=self.snapshot_path,
         )

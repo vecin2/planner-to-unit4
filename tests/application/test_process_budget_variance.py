@@ -1,5 +1,7 @@
 from tests.support.application_runner import ApplicationRunner
-from tests.support.fake_budget_variance_reader import FakeBudgetVarianceReader
+from tests.support.fake_budget_variance_items_provider import (
+    FakeBudgetVarianceItemsProvider,
+)
 
 
 def make_row(
@@ -30,13 +32,6 @@ def make_row(
     }
 
 
-def with_version_and_batch(row: dict, version: str, batch: str) -> dict:
-    enriched = dict(row)
-    enriched["Version"] = version
-    enriched["Batch"] = batch
-    return enriched
-
-
 def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
     row1 = make_row(description="Row1", amount=10)
     row2 = make_row(description="Row2", amount=20)
@@ -45,23 +40,15 @@ def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
 
     run_id = "fabric-run-123"
     max_batch_size = 3
-    version = "ADJ"
-    batch = "WKD"
-
     expected_batches = [
-        [
-            with_version_and_batch(row1, version, batch),
-            with_version_and_batch(row2, version, batch),
-        ]
+        [row1, row2]
     ]
 
-    budget_variance_reader = FakeBudgetVarianceReader()
-    budget_variance_reader.set_rows(rows)
+    items_provider = FakeBudgetVarianceItemsProvider()
+    items_provider.set_items(rows)
 
     runner = ApplicationRunner(
-        budget_variance_reader=budget_variance_reader,
-        version=version,
-        batch=batch,
+        items_provider=items_provider,
         max_batch_size=max_batch_size,
     )
 
@@ -78,24 +65,16 @@ def test_process_budget_variance_submits_multiple_batches_when_batch_size_is_sma
 
     run_id = "fabric-run-456"
     max_batch_size = 2
-    version = "ADJ"
-    batch = "WKD"
-
     expected_batches = [
-        [
-            with_version_and_batch(row1, version, batch),
-            with_version_and_batch(row2, version, batch),
-        ],
-        [with_version_and_batch(row3, version, batch)]
+        [row1, row2],
+        [row3]
     ]
 
-    budget_variance_reader = FakeBudgetVarianceReader()
-    budget_variance_reader.set_rows(rows)
+    items_provider = FakeBudgetVarianceItemsProvider()
+    items_provider.set_items(rows)
 
     runner = ApplicationRunner(
-        budget_variance_reader=budget_variance_reader,
-        version=version,
-        batch=batch,
+        items_provider=items_provider,
         max_batch_size=max_batch_size,
     )
 
