@@ -1,5 +1,4 @@
 from tests.support.application_runner import ApplicationRunner
-from tests.support.fake_budget_variance_reader import FakeBudgetVarianceReader
 
 
 def make_row(
@@ -30,32 +29,43 @@ def make_row(
     }
 
 
-def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
+def with_version_and_batch(row: dict, version: str, batch: str) -> dict:
+    enriched = dict(row)
+    enriched["Version"] = version
+    enriched["Batch"] = batch
+    return enriched
+
+
+def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None:
     row1 = make_row(description="Row1", amount=10)
     row2 = make_row(description="Row2", amount=20)
 
     rows = [row1, row2]
 
     run_id = "fabric-run-123"
-    max_batch_size = 3
-
-    expected_batches = [
-        [row1, row2]
+    max_segment_size = 3
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-123"
+    expected_segments = [
+        [
+            with_version_and_batch(row1, version, batch),
+            with_version_and_batch(row2, version, batch),
+        ]
     ]
 
-    budget_variance_reader = FakeBudgetVarianceReader()
-    budget_variance_reader.set_rows(rows)
-
     runner = ApplicationRunner(
-        budget_variance_reader=budget_variance_reader,
-        max_batch_size=max_batch_size,
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=max_segment_size,
     )
 
-    result = runner.run_process_budget_variance(run_id)
-    runner.assert_batches_sent(expected_batches)
+    result = runner.run_process_budget_variance(run_id, snapshot_path)
+    runner.assert_segments_sent(expected_segments)
 
 
-def test_process_budget_variance_submits_multiple_batches_when_batch_size_is_small() -> None:
+def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_small() -> None:
     row1 = make_row(description="Row1", amount=10)
     row2 = make_row(description="Row2", amount=20)
     row3 = make_row(description="Row3", amount=30)
@@ -63,20 +73,24 @@ def test_process_budget_variance_submits_multiple_batches_when_batch_size_is_sma
     rows = [row1, row2, row3]
 
     run_id = "fabric-run-456"
-    max_batch_size = 2
-
-    expected_batches = [
-        [row1, row2],
-        [row3]
+    max_segment_size = 2
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-456"
+    expected_segments = [
+        [
+            with_version_and_batch(row1, version, batch),
+            with_version_and_batch(row2, version, batch),
+        ],
+        [with_version_and_batch(row3, version, batch)],
     ]
 
-    budget_variance_reader = FakeBudgetVarianceReader()
-    budget_variance_reader.set_rows(rows)
-
     runner = ApplicationRunner(
-        budget_variance_reader=budget_variance_reader,
-        max_batch_size=max_batch_size,
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=max_segment_size,
     )
 
-    result = runner.run_process_budget_variance(run_id)
-    runner.assert_batches_sent(expected_batches)
+    result = runner.run_process_budget_variance(run_id, snapshot_path)
+    runner.assert_segments_sent(expected_segments)
