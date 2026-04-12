@@ -21,6 +21,7 @@ class ApplicationRunner:
         batch: str,
         max_segment_size: int = 2,
         submitted_at: datetime | None = None,
+        log_fn: Callable[[str], None] | None = None,
     ) -> "ApplicationRunner":
         clock = (lambda: submitted_at) if submitted_at else None
         return cls(
@@ -29,6 +30,7 @@ class ApplicationRunner:
             batch=batch,
             max_segment_size=max_segment_size,
             clock=clock,
+            log_fn=log_fn,
         )
 
     def __init__(
@@ -38,6 +40,7 @@ class ApplicationRunner:
         batch: str,
         max_segment_size: int = 2,
         clock: Callable[[], datetime] | None = None,
+        log_fn: Callable[[str], None] | None = None,
     ) -> None:
         budget_variance_reader = FakeBudgetVarianceReader()
         budget_variance_reader.set_rows(rows)
@@ -50,6 +53,7 @@ class ApplicationRunner:
         self.planning_service = FakePlanningService()
         self.segment_monitor = FakeSegmentMonitor()
         self.clock = clock or datetime.utcnow
+        self.log_fn = log_fn or (lambda _message: None)
 
     def run_process_budget_variance(self, pipeline_run_id: str, snapshot_path: str):
         return process_budget_variance.run(
@@ -57,6 +61,7 @@ class ApplicationRunner:
             pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
             segment_monitor=self.segment_monitor,
+            log_fn=self.log_fn,
             max_segment_size=self.max_segment_size,
             snapshot_path=snapshot_path,
             clock=self.clock,

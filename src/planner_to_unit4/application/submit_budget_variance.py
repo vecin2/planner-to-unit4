@@ -20,6 +20,7 @@ class SubmitBudgetVariance:
     items_provider: BudgetVarianceItemsProvider
     planning_service: PlanningService
     segment_monitor: SegmentMonitor
+    log_fn: Callable[[str], None]
     max_segment_size: int = 15000
     clock: Callable[[], datetime] = datetime.utcnow
 
@@ -29,6 +30,7 @@ class SubmitBudgetVariance:
             pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
             segment_monitor=self.segment_monitor,
+            log_fn=self.log_fn,
             max_segment_size=self.max_segment_size,
             snapshot_path=snapshot_path,
             clock=self.clock,

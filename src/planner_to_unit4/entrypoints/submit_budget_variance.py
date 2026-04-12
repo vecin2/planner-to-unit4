@@ -7,6 +7,8 @@ from planner_to_unit4.infrastructure.budget_variance_items_provider import (
 from planner_to_unit4.infrastructure.spark_budget_variance_reader import (
     SparkBudgetVarianceReader,
 )
+from typing import Callable
+
 from planner_to_unit4.infrastructure.soap_planning_service import SoapPlanningService
 from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMonitor
 
@@ -18,6 +20,7 @@ def main(
     version: str,
     batch: str,
     max_records: int | None = None,
+    log_fn: Callable[[str], None],
     endpoint: str,
     username: str,
     client: str,
@@ -45,6 +48,7 @@ def main(
         password=password,
         http_post=requests.post,
         timeout=timeout,
+        log_fn=log_fn,
     )
     segment_monitor = SparkSegmentMonitor(
         spark=spark,
@@ -54,5 +58,6 @@ def main(
         items_provider=items_provider,
         planning_service=planning_service,
         segment_monitor=segment_monitor,
+        log_fn=log_fn,
         max_segment_size=max_segment_size,
     )
