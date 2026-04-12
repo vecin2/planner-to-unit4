@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from tests.support.application_runner import ApplicationRunner
 
 
@@ -47,22 +49,30 @@ def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None
     version = "ADJ"
     batch = "WKD"
     snapshot_path = "snapshot-123"
+    submitted_at = datetime(2026, 4, 12, 12, 0, 0)
     expected_segments = [
         [
             with_version_and_batch(row1, version, batch),
             with_version_and_batch(row2, version, batch),
         ]
     ]
-
-    runner = ApplicationRunner(
+    runner = ApplicationRunner.build(
         rows=rows,
         version=version,
         batch=batch,
         max_segment_size=max_segment_size,
+        submitted_at=submitted_at,
+    )
+    expected_submissions = runner.expected_submissions(
+        pipeline_run_id=run_id,
+        snapshot_path=snapshot_path,
+        segment_sizes=[2],
+        submitted_at=submitted_at,
     )
 
-    result = runner.run_process_budget_variance(run_id, snapshot_path)
+    runner.run_process_budget_variance(run_id, snapshot_path)
     runner.assert_segments_sent(expected_segments)
+    runner.assert_segments_submitted(expected_submissions)
 
 
 def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_small() -> None:
@@ -77,6 +87,7 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
     version = "ADJ"
     batch = "WKD"
     snapshot_path = "snapshot-456"
+    submitted_at = datetime(2026, 4, 12, 12, 30, 0)
     expected_segments = [
         [
             with_version_and_batch(row1, version, batch),
@@ -84,13 +95,20 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
         ],
         [with_version_and_batch(row3, version, batch)],
     ]
-
-    runner = ApplicationRunner(
+    runner = ApplicationRunner.build(
         rows=rows,
         version=version,
         batch=batch,
         max_segment_size=max_segment_size,
+        submitted_at=submitted_at,
+    )
+    expected_submissions = runner.expected_submissions(
+        pipeline_run_id=run_id,
+        snapshot_path=snapshot_path,
+        segment_sizes=[2, 1],
+        submitted_at=submitted_at,
     )
 
-    result = runner.run_process_budget_variance(run_id, snapshot_path)
+    runner.run_process_budget_variance(run_id, snapshot_path)
     runner.assert_segments_sent(expected_segments)
+    runner.assert_segments_submitted(expected_submissions)

@@ -54,7 +54,6 @@ class SoapPlanningService(PlanningService):
             )
         except Exception as exc:  # noqa: BLE001 - boundary IO failure
             return {
-                "status": "FAILED",
                 "order_no": None,
                 "http_status": None,
                 "message": str(exc),
@@ -62,7 +61,6 @@ class SoapPlanningService(PlanningService):
 
         if response.status_code != 200:
             return {
-                "status": "FAILED",
                 "order_no": None,
                 "http_status": response.status_code,
                 "message": response.text,
@@ -70,7 +68,6 @@ class SoapPlanningService(PlanningService):
 
         parsed = parse_object_postback_response(response.text)
         return {
-            "status": "SUBMITTED",
             "order_no": parsed.get("order_no"),
             "http_status": response.status_code,
             "message": parsed.get("message"),

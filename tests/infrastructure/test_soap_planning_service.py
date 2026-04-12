@@ -63,7 +63,6 @@ def test_send_segment_returns_order_no_on_success() -> None:
         ]
     )
 
-    assert result["status"] == "SUBMITTED"
     assert result["order_no"] == "51"
     assert result["http_status"] == 200
     assert (
