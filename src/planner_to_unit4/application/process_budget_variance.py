@@ -20,14 +20,14 @@ def run(
     pipeline_run_id: str,
     planning_service: PlanningService,
     snapshot_path: str,
-    max_batch_size: int = 15000,
+    max_segment_size: int = 15000,
 ) -> ProcessBudgetVarianceResult:
     items = items_provider.read_items()
 
-    batches = list(_chunk_rows(items, max_batch_size))
+    segments = list(_segment_rows(items, max_segment_size))
 
-    for batch in batches:
-        planning_service.send_batch(batch)
+    for segment in segments:
+        planning_service.send_segment(segment)
 
     return ProcessBudgetVarianceResult(
         pipeline_run_id=pipeline_run_id,
@@ -36,6 +36,6 @@ def run(
     )
 
 
-def _chunk_rows(rows: list, batch_size: int):
-    for i in range(0, len(rows), batch_size):
-        yield rows[i : i + batch_size]
+def _segment_rows(rows: list, segment_size: int):
+    for i in range(0, len(rows), segment_size):
+        yield rows[i : i + segment_size]

@@ -30,8 +30,8 @@ class SoapPlanningService(PlanningService):
         self.timeout = timeout
         self.http_post = http_post
 
-    def send_batch(self, batch: list[dict]) -> dict[str, str | int | None]:
-        items = build_postback_items(batch)
+    def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
+        items = build_postback_items(segment)
         envelope = build_soap_envelope(
             items=items,
             username=self.username,

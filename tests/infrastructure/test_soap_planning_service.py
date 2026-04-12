@@ -7,7 +7,7 @@ class FakeResponse:
         self.text = text
 
 
-def test_send_batch_returns_order_no_on_success() -> None:
+def test_send_segment_returns_order_no_on_success() -> None:
     response_xml = """
     <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
        <s:Body>
@@ -43,7 +43,7 @@ def test_send_batch_returns_order_no_on_success() -> None:
         http_post=fake_post,
     )
 
-    result = service.send_batch(
+    result = service.send_segment(
         [
             {
                 "Client": "BI",

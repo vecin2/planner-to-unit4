@@ -14,7 +14,7 @@ class ApplicationRunner:
         rows: list[dict],
         version: str,
         batch: str,
-        max_batch_size: int = 2,
+        max_segment_size: int = 2,
     ) -> None:
         budget_variance_reader = FakeBudgetVarianceReader()
         budget_variance_reader.set_rows(rows)
@@ -23,7 +23,7 @@ class ApplicationRunner:
             version=version,
             batch=batch,
         )
-        self.max_batch_size = max_batch_size
+        self.max_segment_size = max_segment_size
         self.planning_service = FakePlanningService()
 
     def run_process_budget_variance(self, pipeline_run_id: str, snapshot_path: str):
@@ -31,10 +31,10 @@ class ApplicationRunner:
             items_provider=self.items_provider,
             pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
-            max_batch_size=self.max_batch_size,
+            max_segment_size=self.max_segment_size,
             snapshot_path=snapshot_path,
         )
 
-    def assert_batches_sent(self, expected_batches: list[list[dict]]) -> None:
-        actual_batches = self.planning_service.batches
-        assert actual_batches == expected_batches
+    def assert_segments_sent(self, expected_segments: list[list[dict]]) -> None:
+        actual_segments = self.planning_service.segments
+        assert actual_segments == expected_segments

@@ -20,7 +20,7 @@ def main(
     username: str,
     client: str,
     password: str,
-    max_batch_size: int = 15000,
+    max_segment_size: int = 15000,
     timeout: int = 60,
 ) -> SubmitBudgetVariance:
     import requests
@@ -42,5 +42,5 @@ def main(
     return SubmitBudgetVariance(
         items_provider=items_provider,
         planning_service=planning_service,
-        max_batch_size=max_batch_size,
+        max_segment_size=max_segment_size,
     )

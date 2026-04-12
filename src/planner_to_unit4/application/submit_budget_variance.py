@@ -16,13 +16,13 @@ from planner_to_unit4.infrastructure.planning_service import PlanningService
 class SubmitBudgetVariance:
     items_provider: BudgetVarianceItemsProvider
     planning_service: PlanningService
-    max_batch_size: int = 15000
+    max_segment_size: int = 15000
 
     def run(self, pipeline_run_id: str, snapshot_path: str) -> ProcessBudgetVarianceResult:
         return run_process_budget_variance(
             items_provider=self.items_provider,
             pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
-            max_batch_size=self.max_batch_size,
+            max_segment_size=self.max_segment_size,
             snapshot_path=snapshot_path,
         )
