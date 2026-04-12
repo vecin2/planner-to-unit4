@@ -17,6 +17,7 @@ def main(
     source_table_name: str,
     version: str,
     batch: str,
+    max_records: int | None = None,
     endpoint: str,
     username: str,
     client: str,
@@ -27,7 +28,11 @@ def main(
 ) -> SubmitBudgetVariance:
     import requests
 
-    reader = SparkBudgetVarianceReader(spark=spark, table_name=source_table_name)
+    reader = SparkBudgetVarianceReader(
+        spark=spark,
+        table_name=source_table_name,
+        max_records=max_records,
+    )
     items_provider = BudgetVarianceItemsProvider(
         reader=reader,
         version=version,
