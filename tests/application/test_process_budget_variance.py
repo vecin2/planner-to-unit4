@@ -58,11 +58,10 @@ def test_process_budget_variance_submits_one_batch_for_outbound_rows() -> None:
         rows=rows,
         version=version,
         batch=batch,
-        snapshot_path=snapshot_path,
         max_batch_size=max_batch_size,
     )
 
-    result = runner.run_process_budget_variance(run_id)
+    result = runner.run_process_budget_variance(run_id, snapshot_path)
     runner.assert_batches_sent(expected_batches)
 
 
@@ -83,16 +82,15 @@ def test_process_budget_variance_submits_multiple_batches_when_batch_size_is_sma
             with_version_and_batch(row1, version, batch),
             with_version_and_batch(row2, version, batch),
         ],
-        [with_version_and_batch(row3, version, batch)]
+        [with_version_and_batch(row3, version, batch)],
     ]
 
     runner = ApplicationRunner(
         rows=rows,
         version=version,
         batch=batch,
-        snapshot_path=snapshot_path,
         max_batch_size=max_batch_size,
     )
 
-    result = runner.run_process_budget_variance(run_id)
+    result = runner.run_process_budget_variance(run_id, snapshot_path)
     runner.assert_batches_sent(expected_batches)
