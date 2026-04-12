@@ -41,6 +41,7 @@ def test_send_segment_returns_order_no_on_success() -> None:
         client="bi",
         password="secret",
         http_post=fake_post,
+        log_fn=lambda _message: None,
     )
 
     result = service.send_segment(
@@ -63,11 +64,7 @@ def test_send_segment_returns_order_no_on_success() -> None:
         ]
     )
 
-    assert result["status"] == "SUBMITTED"
     assert result["order_no"] == "51"
     assert result["http_status"] == 200
-    assert (
-        result["message"]
-        == "Transactions posted for batch processing. Order no.: 51 (PL400)."
-    )
+    assert result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400)."
     assert "SOAPAction" in captured["headers"]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from planner_to_unit4.infrastructure.planning_service import PlanningService
 from planner_to_unit4.infrastructure.soap_envelope_builder import (
     build_postback_items,
@@ -21,6 +23,7 @@ class SoapPlanningService(PlanningService):
         client: str,
         password: str,
         http_post: HttpPost,
+        log_fn: Callable[[str], None],
         timeout: int = 60,
     ) -> None:
         self.endpoint = endpoint
@@ -29,6 +32,7 @@ class SoapPlanningService(PlanningService):
         self.password = password
         self.timeout = timeout
         self.http_post = http_post
+        self.log_fn = log_fn
 
     def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
         items = build_postback_items(segment)
@@ -39,6 +43,10 @@ class SoapPlanningService(PlanningService):
             password=self.password,
         )
         soap_payload = serialize_soap_envelope(envelope)
+        self.log_fn(
+            "SOAP request: "
+            f"endpoint={self.endpoint} items={len(segment)} payload_bytes={len(soap_payload)}"
+        )
 
         headers = {
             "Content-Type": "text/xml; charset=utf-8",
@@ -53,24 +61,30 @@ class SoapPlanningService(PlanningService):
                 timeout=self.timeout,
             )
         except Exception as exc:  # noqa: BLE001 - boundary IO failure
+            self.log_fn(f"SOAP request failed: error={exc}")
             return {
-                "status": "FAILED",
                 "order_no": None,
                 "http_status": None,
                 "message": str(exc),
             }
 
         if response.status_code != 200:
+            self.log_fn(
+                f"SOAP response: http_status={response.status_code} message={response.text}"
+            )
             return {
-                "status": "FAILED",
                 "order_no": None,
                 "http_status": response.status_code,
                 "message": response.text,
             }
 
         parsed = parse_object_postback_response(response.text)
+        self.log_fn(
+            "SOAP response: "
+            f"http_status={response.status_code} order_no={parsed.get('order_no')} "
+            f"message={parsed.get('message')}"
+        )
         return {
-            "status": "SUBMITTED",
             "order_no": parsed.get("order_no"),
             "http_status": response.status_code,
             "message": parsed.get("message"),

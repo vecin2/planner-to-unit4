@@ -18,6 +18,7 @@ dev = [
   "pytest-cov>=5.0",
   "mypy>=1.8",
   "ruff>=0.4",
+  "pyspark==3.5.5",
 ]
 
 [tool.setuptools]
@@ -30,6 +31,9 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 addopts = "-ra"
+markers = [
+  "spark: requires pyspark",
+]
 
 [tool.ruff]
 line-length = 100
