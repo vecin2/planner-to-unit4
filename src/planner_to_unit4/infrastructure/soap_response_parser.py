@@ -44,10 +44,16 @@ def parse_postback_fault_message(xml_text: str) -> str | None:
     except ElementTree.ParseError:
         return None
 
+    fault_code = None
     for element in root.iter():
+        if _tag_endswith(element.tag, "faultcode") and element.text:
+            fault_code = element.text
         if _tag_endswith(element.tag, "faultstring"):
             if element.text:
-                return element.text
+                return f"{fault_code}: {element.text}" if fault_code else element.text
+
+    if fault_code:
+        return fault_code
 
     log_items = _collect_log_items(root)
     return _format_log_items(log_items)

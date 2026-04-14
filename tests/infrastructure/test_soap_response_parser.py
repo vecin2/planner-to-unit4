@@ -88,7 +88,7 @@ def test_parse_postback_fault_message_extracts_faultstring() -> None:
 
     message = parse_postback_fault_message(xml_text)
 
-    assert message == "Something went wrong."
+    assert message == "s:Server.GeneralError: Something went wrong."
 
 
 def test_parse_postback_fault_message_falls_back_to_log_items() -> None:

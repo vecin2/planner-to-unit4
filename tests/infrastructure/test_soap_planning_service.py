@@ -98,7 +98,7 @@ def test_send_segment_returns_faultstring_on_non_200() -> None:
 
     assert result["order_no"] is None
     assert result["http_status"] == 500
-    assert result["message"] == "Something went wrong."
+    assert result["message"] == "s:Server.GeneralError: Something went wrong."
 
 
 def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
