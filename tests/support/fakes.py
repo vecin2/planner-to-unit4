@@ -2,16 +2,18 @@ from datetime import datetime
 
 
 class FakePlanningService:
-    def __init__(self) -> None:
+    def __init__(self, response: dict[str, str | int | bool | None] | None = None) -> None:
         self.segments: list[list[dict]] = []
-
-    def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
-        self.segments.append(segment)
-        return {
+        self.response = response or {
             "order_no": "fake-order",
             "http_status": 200,
             "message": None,
+            "has_log_items": False,
         }
+
+    def send_segment(self, segment: list[dict]) -> dict[str, str | int | bool | None]:
+        self.segments.append(segment)
+        return dict(self.response)
 
 
 class FakeSegmentMonitor:

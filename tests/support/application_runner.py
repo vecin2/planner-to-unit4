@@ -22,6 +22,7 @@ class ApplicationRunner:
         max_segment_size: int = 2,
         submitted_at: datetime | None = None,
         log_fn: Callable[[str], None] | None = None,
+        planning_service: FakePlanningService | None = None,
     ) -> "ApplicationRunner":
         clock = (lambda: submitted_at) if submitted_at else None
         return cls(
@@ -31,6 +32,7 @@ class ApplicationRunner:
             max_segment_size=max_segment_size,
             clock=clock,
             log_fn=log_fn,
+            planning_service=planning_service,
         )
 
     def __init__(
@@ -41,6 +43,7 @@ class ApplicationRunner:
         max_segment_size: int = 2,
         clock: Callable[[], datetime] | None = None,
         log_fn: Callable[[str], None] | None = None,
+        planning_service: FakePlanningService | None = None,
     ) -> None:
         budget_variance_reader = FakeBudgetVarianceReader()
         budget_variance_reader.set_rows(rows)
@@ -50,7 +53,7 @@ class ApplicationRunner:
             batch=batch,
         )
         self.max_segment_size = max_segment_size
-        self.planning_service = FakePlanningService()
+        self.planning_service = planning_service or FakePlanningService()
         self.segment_monitor = FakeSegmentMonitor()
         self.clock = clock or datetime.utcnow
         self.log_fn = log_fn or (lambda _message: None)
@@ -74,6 +77,9 @@ class ApplicationRunner:
     def assert_segments_submitted(self, expected_submissions: list[dict]) -> None:
         assert self.segment_monitor.submissions == expected_submissions
 
+    def assert_segments_failed(self, expected_failures: list[dict]) -> None:
+        assert self.segment_monitor.failures == expected_failures
+
     def expected_submissions(
         self,
         *,
@@ -93,6 +99,31 @@ class ApplicationRunner:
                 "segment_size": segment_size,
                 "status": "SUBMITTED",
                 "order_no": order_no,
+                "http_status": http_status,
+                "message": message,
+                "submitted_at_utc": submitted_at,
+            }
+            for index, segment_size in enumerate(segment_sizes, start=1)
+        ]
+
+    def expected_failures(
+        self,
+        *,
+        pipeline_run_id: str,
+        snapshot_path: str,
+        segment_sizes: list[int],
+        submitted_at: datetime,
+        http_status: int | None,
+        message: str | None,
+    ) -> list[dict]:
+        return [
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "snapshot_path": snapshot_path,
+                "segment_index": index,
+                "segment_size": segment_size,
+                "status": "FAILED",
+                "order_no": None,
                 "http_status": http_status,
                 "message": message,
                 "submitted_at_utc": submitted_at,

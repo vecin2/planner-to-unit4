@@ -37,32 +37,40 @@ def run(
         f"items={len(items)} segments={len(segments)} max_segment_size={max_segment_size}"
     )
 
+    failed_segments = 0
+
     for segment_index, segment in enumerate(segments, start=1):
         log_fn(f"Submitting segment {segment_index}/{len(segments)} size={len(segment)}")
         result = planning_service.send_segment(segment)
         order_no = result.get("order_no")
+        has_log_items = bool(result.get("has_log_items"))
         log_fn(
             "Segment response: "
             f"segment_index={segment_index} http_status={result.get('http_status')} "
             f"order_no={order_no} message={result.get('message')}"
         )
-        if order_no:
-            segment_monitor.record_submitted(
-                pipeline_run_id=pipeline_run_id,
-                snapshot_path=snapshot_path,
-                segment_index=segment_index,
-                segment_size=len(segment),
-                order_no=order_no,
-                http_status=result.get("http_status"),
-                message=result.get("message"),
-                submitted_at_utc=clock(),
-            )
-            log_fn(f"Recorded submitted segment: segment_index={segment_index} order_no={order_no}")
+        failed_segments += _record_segment_result(
+            segment_monitor=segment_monitor,
+            log_fn=log_fn,
+            pipeline_run_id=pipeline_run_id,
+            snapshot_path=snapshot_path,
+            segment_index=segment_index,
+            segment_size=len(segment),
+            order_no=order_no,
+            http_status=result.get("http_status"),
+            message=result.get("message"),
+            has_log_items=has_log_items,
+            submitted_at_utc=clock(),
+        )
 
     log_fn(
         "Completed budget variance submission: "
         f"pipeline_run_id={pipeline_run_id} snapshot_path={snapshot_path}"
     )
+    if failed_segments:
+        raise RuntimeError(
+            f"Budget variance submission failed for {failed_segments} segments"
+        )
     return ProcessBudgetVarianceResult(
         pipeline_run_id=pipeline_run_id,
         status="COMPLETED",
@@ -73,3 +81,50 @@ def run(
 def _segment_rows(rows: list, segment_size: int):
     for i in range(0, len(rows), segment_size):
         yield rows[i : i + segment_size]
+
+
+def _record_segment_result(
+    *,
+    segment_monitor: SegmentMonitor,
+    log_fn: Callable[[str], None],
+    pipeline_run_id: str,
+    snapshot_path: str,
+    segment_index: int,
+    segment_size: int,
+    order_no: str | None,
+    http_status: int | None,
+    message: str | None,
+    has_log_items: bool,
+    submitted_at_utc: datetime,
+) -> int:
+    if order_no is None or has_log_items:
+        segment_monitor.record_failed(
+            pipeline_run_id=pipeline_run_id,
+            snapshot_path=snapshot_path,
+            segment_index=segment_index,
+            segment_size=segment_size,
+            http_status=http_status,
+            message=message,
+            submitted_at_utc=submitted_at_utc,
+        )
+        log_fn(
+            "Recorded failed segment: "
+            f"segment_index={segment_index} http_status={http_status}"
+        )
+        return 1
+
+    segment_monitor.record_submitted(
+        pipeline_run_id=pipeline_run_id,
+        snapshot_path=snapshot_path,
+        segment_index=segment_index,
+        segment_size=segment_size,
+        order_no=order_no,
+        http_status=http_status,
+        message=message,
+        submitted_at_utc=submitted_at_utc,
+    )
+    log_fn(
+        "Recorded submitted segment: "
+        f"segment_index={segment_index} order_no={order_no}"
+    )
+    return 0

@@ -67,4 +67,5 @@ def test_send_segment_returns_order_no_on_success() -> None:
     assert result["order_no"] == "51"
     assert result["http_status"] == 200
     assert result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    assert result["has_log_items"] is False
     assert "SOAPAction" in captured["headers"]

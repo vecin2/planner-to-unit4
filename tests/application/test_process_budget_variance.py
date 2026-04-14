@@ -1,6 +1,9 @@
 from datetime import datetime
 
+import pytest
+
 from tests.support.application_runner import ApplicationRunner
+from tests.support.fakes import FakePlanningService
 
 
 def make_row(
@@ -112,3 +115,47 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
     runner.run_process_budget_variance(run_id, snapshot_path)
     runner.assert_segments_sent(expected_segments)
     runner.assert_segments_submitted(expected_submissions)
+
+
+def test_process_budget_variance_records_failed_segment_when_log_items_present() -> None:
+    row1 = make_row(description="Row1", amount=10)
+
+    rows = [row1]
+
+    run_id = "fabric-run-789"
+    max_segment_size = 2
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-789"
+    submitted_at = datetime(2026, 4, 12, 13, 45, 0)
+    failure_message = "Row 2 col dim_3: B102397 is not a legal RESNO"
+    planning_service = FakePlanningService(
+        response={
+            "order_no": None,
+            "http_status": 200,
+            "message": failure_message,
+            "has_log_items": True,
+        }
+    )
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=max_segment_size,
+        submitted_at=submitted_at,
+        planning_service=planning_service,
+    )
+    expected_failures = runner.expected_failures(
+        pipeline_run_id=run_id,
+        snapshot_path=snapshot_path,
+        segment_sizes=[1],
+        submitted_at=submitted_at,
+        http_status=200,
+        message=failure_message,
+    )
+
+    with pytest.raises(RuntimeError, match="Budget variance submission failed for 1 segments"):
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    runner.assert_segments_failed(expected_failures)

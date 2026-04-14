@@ -25,3 +25,39 @@ def test_parse_object_postback_response_extracts_order_no_and_message() -> None:
 
     assert result["order_no"] == "51"
     assert result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    assert result["has_log_items"] is False
+
+
+def test_parse_object_postback_response_aggregates_log_items() -> None:
+    xml_text = """
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+       <s:Body>
+          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
+             <ObjectPostBackResult>
+                <LogItems>
+                   <PostbackLogItem>
+                      <Row>2</Row>
+                      <Column>dim_3</Column>
+                      <Message>B102397 is not a legal RESNO</Message>
+                   </PostbackLogItem>
+                   <PostbackLogItem>
+                      <Row></Row>
+                      <Column></Column>
+                      <Message></Message>
+                   </PostbackLogItem>
+                </LogItems>
+                <StatusItems/>
+             </ObjectPostBackResult>
+          </ObjectPostBackResponse>
+       </s:Body>
+    </s:Envelope>
+    """
+
+    result = parse_object_postback_response(xml_text)
+
+    assert result["order_no"] is None
+    assert result["has_log_items"] is True
+    assert (
+        result["message"]
+        == "Row 2 col dim_3: B102397 is not a legal RESNO; Row ? col ?: ?"
+    )
