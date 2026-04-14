@@ -68,3 +68,56 @@ def test_send_segment_returns_order_no_on_success() -> None:
     assert result["http_status"] == 200
     assert result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400)."
     assert "SOAPAction" in captured["headers"]
+
+
+def test_send_segment_returns_faultstring_on_non_200() -> None:
+    response_xml = """
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+       <s:Body>
+          <s:Fault>
+             <faultcode>s:Server.GeneralError</faultcode>
+             <faultstring xml:lang="en-US">Something went wrong.</faultstring>
+          </s:Fault>
+       </s:Body>
+    </s:Envelope>
+    """
+
+    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+        return FakeResponse(500, response_xml)
+
+    service = SoapPlanningService(
+        endpoint="https://example.test/service.svc",
+        username="user",
+        client="bi",
+        password="secret",
+        http_post=fake_post,
+        log_fn=lambda _message: None,
+    )
+
+    result = service.send_segment([{"Client": "BI"}])
+
+    assert result["order_no"] is None
+    assert result["http_status"] == 500
+    assert result["message"] == "Something went wrong."
+
+
+def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
+    response_text = "not xml"
+
+    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+        return FakeResponse(500, response_text)
+
+    service = SoapPlanningService(
+        endpoint="https://example.test/service.svc",
+        username="user",
+        client="bi",
+        password="secret",
+        http_post=fake_post,
+        log_fn=lambda _message: None,
+    )
+
+    result = service.send_segment([{"Client": "BI"}])
+
+    assert result["order_no"] is None
+    assert result["http_status"] == 500
+    assert result["message"] == response_text

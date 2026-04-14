@@ -14,15 +14,7 @@ def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
 
     order_no = None
     status_message = None
-    log_items = []
-
-    for log_item in root.iter():
-        if not _tag_endswith(log_item.tag, "PostbackLogItem"):
-            continue
-        row = _find_child_text(log_item, "Row") or "?"
-        column = _find_child_text(log_item, "Column") or "?"
-        item_message = _find_child_text(log_item, "Message") or "?"
-        log_items.append(f"Row {row} col {column}: {item_message}")
+    log_items = _collect_log_items(root)
 
     for status_item in root.iter():
         if not _tag_endswith(status_item.tag, "PostbackStatusItem"):
@@ -34,7 +26,7 @@ def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
         status_message = _find_child_text(status_item, "Message")
         break
 
-    log_items_message = "; ".join(log_items) if log_items else None
+    log_items_message = _format_log_items(log_items)
     if status_message and log_items_message:
         message = f"{status_message}; {log_items_message}"
     else:
@@ -44,6 +36,39 @@ def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
         "order_no": order_no,
         "message": message,
     }
+
+
+def parse_postback_fault_message(xml_text: str) -> str | None:
+    try:
+        root = ElementTree.fromstring(xml_text)
+    except ElementTree.ParseError:
+        return None
+
+    for element in root.iter():
+        if _tag_endswith(element.tag, "faultstring"):
+            if element.text:
+                return element.text
+
+    log_items = _collect_log_items(root)
+    return _format_log_items(log_items)
+
+
+def _collect_log_items(root: ElementTree.Element) -> list[str]:
+    log_items: list[str] = []
+    for log_item in root.iter():
+        if not _tag_endswith(log_item.tag, "PostbackLogItem"):
+            continue
+        row = _find_child_text(log_item, "Row") or "?"
+        column = _find_child_text(log_item, "Column") or "?"
+        item_message = _find_child_text(log_item, "Message") or "?"
+        log_items.append(f"Row {row} col {column}: {item_message}")
+    return log_items
+
+
+def _format_log_items(log_items: list[str]) -> str | None:
+    if not log_items:
+        return None
+    return "; ".join(log_items)
 
 
 def _find_child_text(element: ElementTree.Element, local_name: str) -> str | None:

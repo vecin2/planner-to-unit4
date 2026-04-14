@@ -9,7 +9,10 @@ from planner_to_unit4.infrastructure.soap_envelope_builder import (
     serialize_soap_envelope,
 )
 from planner_to_unit4.infrastructure.soap_http_client import HttpPost
-from planner_to_unit4.infrastructure.soap_response_parser import parse_object_postback_response
+from planner_to_unit4.infrastructure.soap_response_parser import (
+    parse_object_postback_response,
+    parse_postback_fault_message,
+)
 
 
 SOAP_ACTION = "http://services.agresso.com/PlanningService/ObjectPostBack"
@@ -69,13 +72,15 @@ class SoapPlanningService(PlanningService):
             }
 
         if response.status_code != 200:
+            parsed_message = parse_postback_fault_message(response.text)
+            message = parsed_message or _truncate_message(response.text)
             self.log_fn(
-                f"SOAP response: http_status={response.status_code} message={response.text}"
+                f"SOAP response: http_status={response.status_code} message={message}"
             )
             return {
                 "order_no": None,
                 "http_status": response.status_code,
-                "message": response.text,
+                "message": message,
             }
 
         parsed = parse_object_postback_response(response.text)
@@ -89,3 +94,14 @@ class SoapPlanningService(PlanningService):
             "http_status": response.status_code,
             "message": parsed.get("message"),
         }
+
+
+def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
+    if message is None:
+        return None
+    if len(message) <= limit:
+        return message
+    suffix = "... (truncated)"
+    if limit <= len(suffix):
+        return suffix[:limit]
+    return f"{message[:limit - len(suffix)]}{suffix}"

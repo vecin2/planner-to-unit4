@@ -1,4 +1,7 @@
-from planner_to_unit4.infrastructure.soap_response_parser import parse_object_postback_response
+from planner_to_unit4.infrastructure.soap_response_parser import (
+    parse_object_postback_response,
+    parse_postback_fault_message,
+)
 
 
 def test_parse_object_postback_response_extracts_order_no_and_message() -> None:
@@ -69,3 +72,44 @@ def test_parse_object_postback_response_aggregates_log_items() -> None:
         result["message"]
         == "Row 2 col dim_3: B102397 is not a legal RESNO; Row ? col ?: ?"
     )
+
+
+def test_parse_postback_fault_message_extracts_faultstring() -> None:
+    xml_text = """
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+       <s:Body>
+          <s:Fault>
+             <faultcode>s:Server.GeneralError</faultcode>
+             <faultstring xml:lang="en-US">Something went wrong.</faultstring>
+          </s:Fault>
+       </s:Body>
+    </s:Envelope>
+    """
+
+    message = parse_postback_fault_message(xml_text)
+
+    assert message == "Something went wrong."
+
+
+def test_parse_postback_fault_message_falls_back_to_log_items() -> None:
+    xml_text = """
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+       <s:Body>
+          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
+             <ObjectPostBackResult>
+                <LogItems>
+                   <PostbackLogItem>
+                      <Row>2</Row>
+                      <Column>dim_3</Column>
+                      <Message>B102397 is not a legal RESNO</Message>
+                   </PostbackLogItem>
+                </LogItems>
+             </ObjectPostBackResult>
+          </ObjectPostBackResponse>
+       </s:Body>
+    </s:Envelope>
+    """
+
+    message = parse_postback_fault_message(xml_text)
+
+    assert message == "Row 2 col dim_3: B102397 is not a legal RESNO"
