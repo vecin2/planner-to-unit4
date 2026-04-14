@@ -80,7 +80,11 @@ class SparkSegmentMonitor(SegmentMonitor):
             ]
         )
         dataframe = self.spark.createDataFrame([record], schema=schema)
-        dataframe.write.mode("append").saveAsTable(self.table_name)
+        (
+            dataframe.write.mode("append")
+            .option("mergeSchema", "true")
+            .saveAsTable(self.table_name)
+        )
 
 
 def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
@@ -88,4 +92,7 @@ def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
         return None
     if len(message) <= limit:
         return message
-    return f"{message[:limit]}... (truncated)"
+    suffix = "... (truncated)"
+    if limit <= len(suffix):
+        return suffix[:limit]
+    return f"{message[:limit - len(suffix)]}{suffix}"

@@ -9,7 +9,10 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     SparkSession = None
 
-from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMonitor
+from planner_to_unit4.infrastructure.spark_segment_monitor import (
+    SparkSegmentMonitor,
+    _truncate_message,
+)
 
 
 @pytest.mark.spark
@@ -91,3 +94,12 @@ def test_spark_segment_monitor_records_failure() -> None:
     spark.sql(f"DROP TABLE IF EXISTS {table_name}")
     spark.sql(f"DROP DATABASE IF EXISTS {database_name}")
     spark.stop()
+
+
+def test_truncate_message_limits_length() -> None:
+    message = "a" * 4100
+
+    truncated = _truncate_message(message, limit=4000)
+
+    assert len(truncated) == 4000
+    assert truncated.endswith("... (truncated)")
