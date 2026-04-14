@@ -17,6 +17,7 @@ class FakePlanningService:
 class FakeSegmentMonitor:
     def __init__(self) -> None:
         self.submissions: list[dict[str, object]] = []
+        self.failures: list[dict[str, object]] = []
 
     def record_submitted(
         self,
@@ -35,7 +36,32 @@ class FakeSegmentMonitor:
                 "snapshot_path": snapshot_path,
                 "segment_index": segment_index,
                 "segment_size": segment_size,
+                "status": "SUBMITTED",
                 "order_no": order_no,
+                "http_status": http_status,
+                "message": message,
+                "submitted_at_utc": submitted_at_utc,
+            }
+        )
+
+    def record_failed(
+        self,
+        pipeline_run_id: str,
+        snapshot_path: str,
+        segment_index: int,
+        segment_size: int,
+        http_status: int | None,
+        message: str | None,
+        submitted_at_utc: datetime,
+    ) -> None:
+        self.failures.append(
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "snapshot_path": snapshot_path,
+                "segment_index": segment_index,
+                "segment_size": segment_size,
+                "status": "FAILED",
+                "order_no": None,
                 "http_status": http_status,
                 "message": message,
                 "submitted_at_utc": submitted_at_utc,

@@ -91,6 +91,7 @@ class ApplicationRunner:
                 "snapshot_path": snapshot_path,
                 "segment_index": index,
                 "segment_size": segment_size,
+                "status": "SUBMITTED",
                 "order_no": order_no,
                 "http_status": http_status,
                 "message": message,

@@ -18,3 +18,16 @@ class SegmentMonitor(Protocol):
     ) -> None:
         """Record a successfully submitted segment."""
         ...
+
+    def record_failed(
+        self,
+        pipeline_run_id: str,
+        snapshot_path: str,
+        segment_index: int,
+        segment_size: int,
+        http_status: int | None,
+        message: str | None,
+        submitted_at_utc: datetime,
+    ) -> None:
+        """Record a segment that failed to submit."""
+        ...
