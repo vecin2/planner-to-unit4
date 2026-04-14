@@ -41,7 +41,24 @@ def run(
 
     for segment_index, segment in enumerate(segments, start=1):
         log_fn(f"Submitting segment {segment_index}/{len(segments)} size={len(segment)}")
-        result = planning_service.send_segment(segment)
+        try:
+            result = planning_service.send_segment(segment)
+        except Exception as exc:  # noqa: BLE001 - boundary IO failure
+            segment_monitor.record_failed(
+                pipeline_run_id=pipeline_run_id,
+                snapshot_path=snapshot_path,
+                segment_index=segment_index,
+                segment_size=len(segment),
+                http_status=None,
+                message=str(exc),
+                submitted_at_utc=clock(),
+            )
+            log_fn(
+                "Recorded failed segment: "
+                f"segment_index={segment_index} error={exc}"
+            )
+            raise
+
         order_no = result.get("order_no")
         log_fn(
             "Segment response: "

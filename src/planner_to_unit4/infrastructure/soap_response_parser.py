@@ -4,13 +4,7 @@ from xml.etree import ElementTree
 
 
 def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
-    try:
-        root = ElementTree.fromstring(xml_text)
-    except ElementTree.ParseError as exc:
-        return {
-            "order_no": None,
-            "message": f"ParseError: {exc}",
-        }
+    root = ElementTree.fromstring(xml_text)
 
     order_no = None
     status_message = None

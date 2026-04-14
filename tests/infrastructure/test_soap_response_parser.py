@@ -1,3 +1,7 @@
+from xml.etree import ElementTree
+
+import pytest
+
 from planner_to_unit4.infrastructure.soap_response_parser import (
     parse_object_postback_response,
     parse_postback_fault_message,
@@ -113,3 +117,8 @@ def test_parse_postback_fault_message_falls_back_to_log_items() -> None:
     message = parse_postback_fault_message(xml_text)
 
     assert message == "Row 2 col dim_3: B102397 is not a legal RESNO"
+
+
+def test_parse_object_postback_response_raises_on_invalid_xml() -> None:
+    with pytest.raises(ElementTree.ParseError):
+        parse_object_postback_response("not xml")

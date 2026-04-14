@@ -56,20 +56,12 @@ class SoapPlanningService(PlanningService):
             "SOAPAction": SOAP_ACTION,
         }
 
-        try:
-            response = self.http_post(
-                self.endpoint,
-                data=soap_payload,
-                headers=headers,
-                timeout=self.timeout,
-            )
-        except Exception as exc:  # noqa: BLE001 - boundary IO failure
-            self.log_fn(f"SOAP request failed: error={exc}")
-            return {
-                "order_no": None,
-                "http_status": None,
-                "message": str(exc),
-            }
+        response = self.http_post(
+            self.endpoint,
+            data=soap_payload,
+            headers=headers,
+            timeout=self.timeout,
+        )
 
         if response.status_code != 200:
             parsed_message = parse_postback_fault_message(response.text)

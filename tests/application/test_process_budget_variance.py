@@ -201,3 +201,42 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
         runner.run_process_budget_variance(run_id, snapshot_path)
 
     runner.assert_segments_failed(expected_failures)
+
+
+def test_process_budget_variance_records_failed_segment_on_exception() -> None:
+    row1 = make_row(description="Row1", amount=10)
+
+    rows = [row1]
+
+    run_id = "fabric-run-654"
+    max_segment_size = 2
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-654"
+    submitted_at = datetime(2026, 4, 12, 14, 30, 0)
+
+    class RaisingPlanningService:
+        def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
+            raise TimeoutError("network timeout")
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=max_segment_size,
+        submitted_at=submitted_at,
+        planning_service=RaisingPlanningService(),
+    )
+    expected_failures = runner.expected_failures(
+        pipeline_run_id=run_id,
+        snapshot_path=snapshot_path,
+        segment_sizes=[1],
+        submitted_at=submitted_at,
+        http_status=None,
+        message="network timeout",
+    )
+
+    with pytest.raises(TimeoutError, match="network timeout"):
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    runner.assert_segments_failed(expected_failures)
