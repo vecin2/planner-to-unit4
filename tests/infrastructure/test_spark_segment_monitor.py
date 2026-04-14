@@ -1,17 +1,16 @@
 from datetime import datetime
-from uuid import uuid4
 
 import pytest
-
-
-try:
-    from pyspark.sql import SparkSession
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
-    SparkSession = None
 
 from planner_to_unit4.infrastructure.spark_segment_monitor import (
     SparkSegmentMonitor,
     _truncate_message,
+)
+from tests.support.spark_test_utils import (
+    SparkSession,
+    cleanup_temp_table,
+    create_spark_session,
+    create_temp_table,
 )
 
 
@@ -20,11 +19,13 @@ def test_spark_segment_monitor_records_submission() -> None:
     if SparkSession is None:
         pytest.skip("pyspark is not installed")
 
-    spark = SparkSession.builder.master("local[1]").appName("segment-monitor-test").getOrCreate()
-    database_name = f"segment_monitoring_test_{uuid4().hex}"
-    table_name = f"{database_name}.segment_monitoring"
+    spark = create_spark_session("segment-monitor-test")
+    database_name, table_name = create_temp_table(
+        spark,
+        database_prefix="segment_monitoring_test",
+        table_name="segment_monitoring",
+    )
     submitted_at = datetime(2026, 4, 12, 13, 0, 0)
-    spark.sql(f"CREATE DATABASE IF NOT EXISTS {database_name}")
 
     monitor = SparkSegmentMonitor(spark=spark, table_name=table_name)
     monitor.record_submitted(
@@ -51,9 +52,7 @@ def test_spark_segment_monitor_records_submission() -> None:
         "submitted_at_utc": submitted_at,
     }
 
-    spark.sql(f"DROP TABLE IF EXISTS {table_name}")
-    spark.sql(f"DROP DATABASE IF EXISTS {database_name}")
-    spark.stop()
+    cleanup_temp_table(spark, table_name, database_name)
 
 
 @pytest.mark.spark
@@ -61,11 +60,13 @@ def test_spark_segment_monitor_records_failure() -> None:
     if SparkSession is None:
         pytest.skip("pyspark is not installed")
 
-    spark = SparkSession.builder.master("local[1]").appName("segment-monitor-test").getOrCreate()
-    database_name = f"segment_monitoring_test_{uuid4().hex}"
-    table_name = f"{database_name}.segment_monitoring"
+    spark = create_spark_session("segment-monitor-test")
+    database_name, table_name = create_temp_table(
+        spark,
+        database_prefix="segment_monitoring_test",
+        table_name="segment_monitoring",
+    )
     submitted_at = datetime(2026, 4, 12, 13, 30, 0)
-    spark.sql(f"CREATE DATABASE IF NOT EXISTS {database_name}")
 
     monitor = SparkSegmentMonitor(spark=spark, table_name=table_name)
     monitor.record_failed(
@@ -91,9 +92,7 @@ def test_spark_segment_monitor_records_failure() -> None:
         "submitted_at_utc": submitted_at,
     }
 
-    spark.sql(f"DROP TABLE IF EXISTS {table_name}")
-    spark.sql(f"DROP DATABASE IF EXISTS {database_name}")
-    spark.stop()
+    cleanup_temp_table(spark, table_name, database_name)
 
 
 def test_truncate_message_limits_length() -> None:

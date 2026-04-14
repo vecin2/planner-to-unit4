@@ -1,14 +1,13 @@
-from uuid import uuid4
-
 import pytest
-
-try:
-    from pyspark.sql import SparkSession
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
-    SparkSession = None
 
 from planner_to_unit4.infrastructure.spark_budget_variance_reader import (
     SparkBudgetVarianceReader,
+)
+from tests.support.spark_test_utils import (
+    SparkSession,
+    cleanup_temp_table,
+    create_spark_session,
+    create_temp_table,
 )
 
 
@@ -17,12 +16,12 @@ def test_spark_budget_variance_reader_reads_rows() -> None:
     if SparkSession is None:
         pytest.skip("pyspark is not installed")
 
-    spark = (
-        SparkSession.builder.master("local[1]").appName("budget-variance-reader-test").getOrCreate()
+    spark = create_spark_session("budget-variance-reader-test")
+    database_name, table_name = create_temp_table(
+        spark,
+        database_prefix="budget_variance_test",
+        table_name="budget_variance_rows",
     )
-    database_name = f"budget_variance_test_{uuid4().hex}"
-    table_name = f"{database_name}.budget_variance_rows"
-    spark.sql(f"CREATE DATABASE IF NOT EXISTS {database_name}")
 
     expected_rows = [
         {
@@ -66,6 +65,4 @@ def test_spark_budget_variance_reader_reads_rows() -> None:
     assert len(rows) == 1
     assert rows[0] in expected_rows
 
-    spark.sql(f"DROP TABLE IF EXISTS {table_name}")
-    spark.sql(f"DROP DATABASE IF EXISTS {database_name}")
-    spark.stop()
+    cleanup_temp_table(spark, table_name, database_name)
