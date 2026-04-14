@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from planner_to_unit4.application.submit_budget_variance import SubmitBudgetVariance
+from planner_to_unit4.entrypoints.submit_budget_variance_config import validate_config
 from planner_to_unit4.infrastructure.budget_variance_items_provider import (
     BudgetVarianceItemsProvider,
 )
 from planner_to_unit4.infrastructure.spark_budget_variance_reader import (
     SparkBudgetVarianceReader,
 )
-from typing import Callable
-
 from planner_to_unit4.infrastructure.soap_planning_service import SoapPlanningService
 from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMonitor
 
@@ -16,48 +17,39 @@ from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMo
 def main(
     *,
     spark,
-    source_table_name: str,
-    version: str,
-    batch: str,
-    max_records: int | None = None,
+    config: dict[str, object],
     log_fn: Callable[[str], None],
-    endpoint: str,
-    username: str,
-    client: str,
-    password: str,
-    max_segment_size: int = 15000,
-    timeout: int = 60,
-    segment_monitoring_table: str = "planner_to_unit4.segment_monitoring",
 ) -> SubmitBudgetVariance:
     import requests
 
+    validated = validate_config(config)
     reader = SparkBudgetVarianceReader(
         spark=spark,
-        table_name=source_table_name,
-        max_records=max_records,
+        table_name=validated["source_table_name"],
+        max_records=validated["max_records"],
     )
     items_provider = BudgetVarianceItemsProvider(
         reader=reader,
-        version=version,
-        batch=batch,
+        version=validated["version"],
+        batch=validated["batch"],
     )
     planning_service = SoapPlanningService(
-        endpoint=endpoint,
-        username=username,
-        client=client,
-        password=password,
+        endpoint=validated["endpoint"],
+        username=validated["username"],
+        client=validated["client"],
+        password=validated["password"],
         http_post=requests.post,
-        timeout=timeout,
+        timeout=validated["timeout"],
         log_fn=log_fn,
     )
     segment_monitor = SparkSegmentMonitor(
         spark=spark,
-        table_name=segment_monitoring_table,
+        table_name=validated["segment_monitoring_table"],
     )
     return SubmitBudgetVariance(
         items_provider=items_provider,
         planning_service=planning_service,
         segment_monitor=segment_monitor,
         log_fn=log_fn,
-        max_segment_size=max_segment_size,
+        max_segment_size=validated["max_segment_size"],
     )
