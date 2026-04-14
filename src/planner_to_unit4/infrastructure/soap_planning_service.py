@@ -66,7 +66,6 @@ class SoapPlanningService(PlanningService):
                 "order_no": None,
                 "http_status": None,
                 "message": str(exc),
-                "has_log_items": False,
             }
 
         if response.status_code != 200:
@@ -77,7 +76,6 @@ class SoapPlanningService(PlanningService):
                 "order_no": None,
                 "http_status": response.status_code,
                 "message": response.text,
-                "has_log_items": False,
             }
 
         parsed = parse_object_postback_response(response.text)
@@ -90,5 +88,4 @@ class SoapPlanningService(PlanningService):
             "order_no": parsed.get("order_no"),
             "http_status": response.status_code,
             "message": parsed.get("message"),
-            "has_log_items": parsed.get("has_log_items"),
         }

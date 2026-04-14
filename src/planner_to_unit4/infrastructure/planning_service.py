@@ -1,6 +1,6 @@
 from typing import Protocol
 
-SegmentSubmissionResult = dict[str, str | int | bool | None]
+SegmentSubmissionResult = dict[str, str | int | None]
 
 
 class PlanningService(Protocol):

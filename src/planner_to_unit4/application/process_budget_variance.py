@@ -43,7 +43,6 @@ def run(
         log_fn(f"Submitting segment {segment_index}/{len(segments)} size={len(segment)}")
         result = planning_service.send_segment(segment)
         order_no = result.get("order_no")
-        has_log_items = bool(result.get("has_log_items"))
         log_fn(
             "Segment response: "
             f"segment_index={segment_index} http_status={result.get('http_status')} "
@@ -59,7 +58,6 @@ def run(
             order_no=order_no,
             http_status=result.get("http_status"),
             message=result.get("message"),
-            has_log_items=has_log_items,
             submitted_at_utc=clock(),
         )
 
@@ -94,10 +92,9 @@ def _record_segment_result(
     order_no: str | None,
     http_status: int | None,
     message: str | None,
-    has_log_items: bool,
     submitted_at_utc: datetime,
 ) -> int:
-    if order_no is None or has_log_items:
+    if order_no is None:
         segment_monitor.record_failed(
             pipeline_run_id=pipeline_run_id,
             snapshot_path=snapshot_path,

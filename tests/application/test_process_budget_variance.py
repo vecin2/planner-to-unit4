@@ -134,7 +134,6 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
             "order_no": None,
             "http_status": 200,
             "message": failure_message,
-            "has_log_items": True,
         }
     )
 

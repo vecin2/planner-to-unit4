@@ -3,14 +3,13 @@ from __future__ import annotations
 from xml.etree import ElementTree
 
 
-def parse_object_postback_response(xml_text: str) -> dict[str, str | None | bool]:
+def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
     try:
         root = ElementTree.fromstring(xml_text)
     except ElementTree.ParseError as exc:
         return {
             "order_no": None,
             "message": f"ParseError: {exc}",
-            "has_log_items": False,
         }
 
     order_no = None
@@ -35,13 +34,15 @@ def parse_object_postback_response(xml_text: str) -> dict[str, str | None | bool
         status_message = _find_child_text(status_item, "Message")
         break
 
-    has_log_items = bool(log_items)
-    message = "; ".join(log_items) if has_log_items else status_message
+    log_items_message = "; ".join(log_items) if log_items else None
+    if status_message and log_items_message:
+        message = f"{status_message}; {log_items_message}"
+    else:
+        message = status_message or log_items_message
 
     return {
         "order_no": order_no,
         "message": message,
-        "has_log_items": has_log_items,
     }
 
 
