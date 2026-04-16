@@ -1,6 +1,6 @@
 import pytest
 
-from planner_to_unit4.entrypoints.submit_budget_variance_config import validate_config
+from planner_to_unit4.entrypoints.submit_budget_variance import validate_config
 
 
 def _base_config() -> dict[str, object]:
