@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class FileSystem(Protocol):
+    def mkdirs(self, path: str) -> None: ...
+
+    def mv(self, source_path: str, destination_path: str) -> None: ...
+
+    def ls(self, path: str) -> list[object]: ...
+
+    def rm(self, path: str, recurse: bool = False) -> None: ...
