@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Callable
 
-from planner_to_unit4.application import process_budget_variance
+from planner_to_unit4.application.submit_budget_variance import SubmitBudgetVariance
 from planner_to_unit4.infrastructure.budget_variance_items_provider import (
     BudgetVarianceItemsProvider,
 )
@@ -59,15 +59,17 @@ class ApplicationRunner:
         self.log_fn = log_fn or (lambda _message: None)
 
     def run_process_budget_variance(self, pipeline_run_id: str, snapshot_path: str):
-        return process_budget_variance.run(
+        submitter = SubmitBudgetVariance(
             items_provider=self.items_provider,
-            pipeline_run_id=pipeline_run_id,
             planning_service=self.planning_service,
             segment_monitor=self.segment_monitor,
             log_fn=self.log_fn,
             max_segment_size=self.max_segment_size,
-            snapshot_path=snapshot_path,
             clock=self.clock,
+        )
+        return submitter.run(
+            pipeline_run_id=pipeline_run_id,
+            snapshot_path=snapshot_path,
         )
 
     def assert_segments_sent(self, expected_segments: list[list[dict]]) -> None:
