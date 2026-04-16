@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from datetime import timedelta
 
 from planner_to_unit4.infrastructure.segment_monitor import SegmentMonitor
 
@@ -33,6 +34,17 @@ class SparkSegmentMonitor(SegmentMonitor):
             "submitted_at_utc": submitted_at_utc,
         }
         self._write_record(record)
+
+    def apply_retention(self, retention_days: int, now_utc: datetime) -> None:
+        if not self.spark.catalog.tableExists(self.table_name):
+            return
+
+        cutoff = now_utc - timedelta(days=retention_days)
+        cutoff_text = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+        table_name = _quote_table_name(self.table_name)
+        self.spark.sql(
+            f"DELETE FROM {table_name} WHERE submitted_at_utc < TIMESTAMP '{cutoff_text}'"
+        )
 
     def record_failed(
         self,
@@ -80,11 +92,7 @@ class SparkSegmentMonitor(SegmentMonitor):
             ]
         )
         dataframe = self.spark.createDataFrame([record], schema=schema)
-        (
-            dataframe.write.mode("append")
-            .option("mergeSchema", "true")
-            .saveAsTable(self.table_name)
-        )
+        (dataframe.write.mode("append").option("mergeSchema", "true").saveAsTable(self.table_name))
 
 
 def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
@@ -95,4 +103,8 @@ def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
     suffix = "... (truncated)"
     if limit <= len(suffix):
         return suffix[:limit]
-    return f"{message[:limit - len(suffix)]}{suffix}"
+    return f"{message[: limit - len(suffix)]}{suffix}"
+
+
+def _quote_table_name(table_name: str) -> str:
+    return ".".join(f"`{part}`" for part in table_name.split("."))

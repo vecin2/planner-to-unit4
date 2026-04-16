@@ -5,6 +5,10 @@ from typing import Protocol
 
 
 class SegmentMonitor(Protocol):
+    def apply_retention(self, retention_days: int, now_utc: datetime) -> None:
+        """Delete monitor rows older than the configured retention window."""
+        ...
+
     def record_submitted(
         self,
         pipeline_run_id: str,

@@ -20,9 +20,11 @@ class ApplicationRunner:
         version: str,
         batch: str,
         max_segment_size: int = 2,
+        segment_monitor_retention_days: int | None = None,
         submitted_at: datetime | None = None,
         log_fn: Callable[[str], None] | None = None,
         planning_service: FakePlanningService | None = None,
+        segment_monitor: FakeSegmentMonitor | None = None,
     ) -> "ApplicationRunner":
         clock = (lambda: submitted_at) if submitted_at else None
         return cls(
@@ -30,9 +32,11 @@ class ApplicationRunner:
             version=version,
             batch=batch,
             max_segment_size=max_segment_size,
+            segment_monitor_retention_days=segment_monitor_retention_days,
             clock=clock,
             log_fn=log_fn,
             planning_service=planning_service,
+            segment_monitor=segment_monitor,
         )
 
     def __init__(
@@ -41,9 +45,11 @@ class ApplicationRunner:
         version: str,
         batch: str,
         max_segment_size: int = 2,
+        segment_monitor_retention_days: int | None = None,
         clock: Callable[[], datetime] | None = None,
         log_fn: Callable[[str], None] | None = None,
         planning_service: FakePlanningService | None = None,
+        segment_monitor: FakeSegmentMonitor | None = None,
     ) -> None:
         budget_variance_reader = FakeBudgetVarianceReader()
         budget_variance_reader.set_rows(rows)
@@ -53,8 +59,9 @@ class ApplicationRunner:
             batch=batch,
         )
         self.max_segment_size = max_segment_size
+        self.segment_monitor_retention_days = segment_monitor_retention_days
         self.planning_service = planning_service or FakePlanningService()
-        self.segment_monitor = FakeSegmentMonitor()
+        self.segment_monitor = segment_monitor or FakeSegmentMonitor()
         self.clock = clock or datetime.utcnow
         self.log_fn = log_fn or (lambda _message: None)
 
@@ -65,6 +72,7 @@ class ApplicationRunner:
             segment_monitor=self.segment_monitor,
             log_fn=self.log_fn,
             max_segment_size=self.max_segment_size,
+            segment_monitor_retention_days=self.segment_monitor_retention_days,
             clock=self.clock,
         )
         return submitter.run(
@@ -81,6 +89,9 @@ class ApplicationRunner:
 
     def assert_segments_failed(self, expected_failures: list[dict]) -> None:
         assert self.segment_monitor.failures == expected_failures
+
+    def assert_retention_applied(self, expected_calls: list[dict]) -> None:
+        assert self.segment_monitor.retention_calls == expected_calls
 
     def expected_submissions(
         self,
