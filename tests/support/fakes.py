@@ -16,9 +16,21 @@ class FakePlanningService:
 
 
 class FakeSegmentMonitor:
-    def __init__(self) -> None:
+    def __init__(self, retention_error: Exception | None = None) -> None:
         self.submissions: list[dict[str, object]] = []
         self.failures: list[dict[str, object]] = []
+        self.retention_calls: list[dict[str, object]] = []
+        self.retention_error = retention_error
+
+    def apply_retention(self, retention_days: int, now_utc: datetime) -> None:
+        self.retention_calls.append(
+            {
+                "retention_days": retention_days,
+                "now_utc": now_utc,
+            }
+        )
+        if self.retention_error is not None:
+            raise self.retention_error
 
     def record_submitted(
         self,

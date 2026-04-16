@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 
 from tests.support.application_runner import ApplicationRunner
-from tests.support.fakes import FakePlanningService
+from tests.support.fakes import FakePlanningService, FakeSegmentMonitor
 
 
 def make_row(
@@ -240,3 +240,65 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
         runner.run_process_budget_variance(run_id, snapshot_path)
 
     runner.assert_segments_failed(expected_failures)
+
+
+def test_process_budget_variance_applies_retention_when_configured() -> None:
+    row1 = make_row(description="Row1", amount=10)
+
+    rows = [row1]
+
+    run_id = "fabric-run-321"
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-321"
+    submitted_at = datetime(2026, 4, 12, 15, 0, 0)
+    segment_monitor = FakeSegmentMonitor()
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        submitted_at=submitted_at,
+        segment_monitor_retention_days=14,
+        segment_monitor=segment_monitor,
+    )
+
+    runner.run_process_budget_variance(run_id, snapshot_path)
+
+    runner.assert_retention_applied(
+        [
+            {
+                "retention_days": 14,
+                "now_utc": submitted_at,
+            }
+        ]
+    )
+
+
+def test_process_budget_variance_continues_when_retention_fails() -> None:
+    row1 = make_row(description="Row1", amount=10)
+
+    rows = [row1]
+
+    run_id = "fabric-run-333"
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-333"
+    submitted_at = datetime(2026, 4, 12, 15, 30, 0)
+    messages: list[str] = []
+    segment_monitor = FakeSegmentMonitor(retention_error=RuntimeError("cleanup failed"))
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        submitted_at=submitted_at,
+        segment_monitor_retention_days=14,
+        segment_monitor=segment_monitor,
+        log_fn=messages.append,
+    )
+
+    runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert any("Retention cleanup warning" in message for message in messages)
+    assert runner.segment_monitor.submissions

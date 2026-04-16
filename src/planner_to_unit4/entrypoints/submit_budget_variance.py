@@ -27,6 +27,7 @@ REQUIRED_KEYS = {
 
 OPTIONAL_DEFAULTS: dict[str, Any] = {
     "max_segment_size": 12000,
+    "segment_monitor_retention_days": None,
     "timeout": 90,
 }
 
@@ -72,6 +73,7 @@ def main(
         segment_monitor=segment_monitor,
         log_fn=log_fn,
         max_segment_size=validated["max_segment_size"],
+        segment_monitor_retention_days=validated["segment_monitor_retention_days"],
     )
 
 
@@ -100,6 +102,18 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     elif timeout <= 0:
         invalid_ranges["timeout"] = timeout
 
+    segment_monitor_retention_days = config.get(
+        "segment_monitor_retention_days",
+        OPTIONAL_DEFAULTS["segment_monitor_retention_days"],
+    )
+    if segment_monitor_retention_days is not None:
+        if not _is_int(segment_monitor_retention_days):
+            invalid_types["segment_monitor_retention_days"] = type(
+                segment_monitor_retention_days
+            ).__name__
+        elif segment_monitor_retention_days <= 0:
+            invalid_ranges["segment_monitor_retention_days"] = segment_monitor_retention_days
+
     if missing_keys or unknown_keys or invalid_types or invalid_ranges:
         raise ValueError(
             "Invalid config: "
@@ -119,6 +133,7 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
         "password": config["password"],
         "segment_monitoring_table": config["segment_monitoring_table"],
         "max_segment_size": max_segment_size,
+        "segment_monitor_retention_days": segment_monitor_retention_days,
         "timeout": timeout,
     }
 

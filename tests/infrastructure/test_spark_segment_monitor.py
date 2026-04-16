@@ -102,3 +102,60 @@ def test_truncate_message_limits_length() -> None:
 
     assert len(truncated) == 4000
     assert truncated.endswith("... (truncated)")
+
+
+def test_apply_retention_deletes_old_rows_when_table_exists() -> None:
+    commands: list[str] = []
+
+    class FakeCatalog:
+        def tableExists(self, table_name: str) -> bool:  # noqa: N802 - Spark naming
+            return table_name == "planner_to_unit4.segment_monitoring"
+
+    class FakeSpark:
+        def __init__(self) -> None:
+            self.catalog = FakeCatalog()
+
+        def sql(self, command: str) -> None:
+            commands.append(command)
+
+    monitor = SparkSegmentMonitor(
+        spark=FakeSpark(),
+        table_name="planner_to_unit4.segment_monitoring",
+    )
+
+    monitor.apply_retention(
+        retention_days=7,
+        now_utc=datetime(2026, 4, 20, 12, 0, 0),
+    )
+
+    assert commands == [
+        "DELETE FROM `planner_to_unit4`.`segment_monitoring` "
+        "WHERE submitted_at_utc < TIMESTAMP '2026-04-13 12:00:00'"
+    ]
+
+
+def test_apply_retention_noops_when_table_does_not_exist() -> None:
+    commands: list[str] = []
+
+    class FakeCatalog:
+        def tableExists(self, table_name: str) -> bool:  # noqa: N802 - Spark naming
+            return False
+
+    class FakeSpark:
+        def __init__(self) -> None:
+            self.catalog = FakeCatalog()
+
+        def sql(self, command: str) -> None:
+            commands.append(command)
+
+    monitor = SparkSegmentMonitor(
+        spark=FakeSpark(),
+        table_name="planner_to_unit4.segment_monitoring",
+    )
+
+    monitor.apply_retention(
+        retention_days=7,
+        now_utc=datetime(2026, 4, 20, 12, 0, 0),
+    )
+
+    assert commands == []

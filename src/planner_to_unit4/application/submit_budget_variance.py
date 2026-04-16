@@ -25,9 +25,22 @@ class SubmitBudgetVariance:
     segment_monitor: SegmentMonitor
     log_fn: Callable[[str], None]
     max_segment_size: int = 15000
+    segment_monitor_retention_days: int | None = None
     clock: Callable[[], datetime] = datetime.utcnow
 
     def run(self, pipeline_run_id: str, snapshot_path: str) -> ProcessBudgetVarianceResult:
+        if self.segment_monitor_retention_days is not None:
+            try:
+                self.segment_monitor.apply_retention(
+                    retention_days=self.segment_monitor_retention_days,
+                    now_utc=self.clock(),
+                )
+            except Exception as exc:  # noqa: BLE001 - retention should not block submission
+                self.log_fn(
+                    "Retention cleanup warning: "
+                    f"retention_days={self.segment_monitor_retention_days} error={exc}"
+                )
+
         items = self.items_provider.read_items()
 
         segments = list(_segment_rows(items, self.max_segment_size))

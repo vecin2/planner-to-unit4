@@ -20,6 +20,7 @@ def test_validate_config_applies_defaults() -> None:
     validated = validate_config(_base_config())
 
     assert validated["max_segment_size"] == 12000
+    assert validated["segment_monitor_retention_days"] is None
     assert validated["timeout"] == 90
 
 
@@ -43,6 +44,7 @@ def test_validate_config_rejects_invalid_types() -> None:
     config = _base_config()
     config["endpoint"] = 123
     config["max_segment_size"] = True
+    config["segment_monitor_retention_days"] = "7"
 
     with pytest.raises(ValueError) as excinfo:
         validate_config(config)
@@ -51,11 +53,13 @@ def test_validate_config_rejects_invalid_types() -> None:
     assert "invalid types={" in message
     assert "endpoint': 'int'" in message
     assert "max_segment_size': 'bool'" in message
+    assert "segment_monitor_retention_days': 'str'" in message
 
 
 def test_validate_config_rejects_invalid_ranges() -> None:
     config = _base_config()
     config["max_segment_size"] = 0
+    config["segment_monitor_retention_days"] = 0
     config["timeout"] = -1
 
     with pytest.raises(ValueError) as excinfo:
@@ -64,4 +68,5 @@ def test_validate_config_rejects_invalid_ranges() -> None:
     message = str(excinfo.value)
     assert "invalid ranges={" in message
     assert "max_segment_size': 0" in message
+    assert "segment_monitor_retention_days': 0" in message
     assert "timeout': -1" in message
