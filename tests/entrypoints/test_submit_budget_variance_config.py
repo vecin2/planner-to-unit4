@@ -21,7 +21,6 @@ def test_validate_config_applies_defaults() -> None:
 
     assert validated["max_segment_size"] == 12000
     assert validated["timeout"] == 90
-    assert validated["max_records"] is None
 
 
 def test_validate_config_rejects_missing_required_keys() -> None:
@@ -43,7 +42,6 @@ def test_validate_config_rejects_unknown_keys() -> None:
 def test_validate_config_rejects_invalid_types() -> None:
     config = _base_config()
     config["endpoint"] = 123
-    config["max_records"] = "10"
     config["max_segment_size"] = True
 
     with pytest.raises(ValueError) as excinfo:
@@ -52,7 +50,6 @@ def test_validate_config_rejects_invalid_types() -> None:
     message = str(excinfo.value)
     assert "invalid types={" in message
     assert "endpoint': 'int'" in message
-    assert "max_records': 'str'" in message
     assert "max_segment_size': 'bool'" in message
 
 
@@ -60,7 +57,6 @@ def test_validate_config_rejects_invalid_ranges() -> None:
     config = _base_config()
     config["max_segment_size"] = 0
     config["timeout"] = -1
-    config["max_records"] = 0
 
     with pytest.raises(ValueError) as excinfo:
         validate_config(config)
@@ -69,4 +65,3 @@ def test_validate_config_rejects_invalid_ranges() -> None:
     assert "invalid ranges={" in message
     assert "max_segment_size': 0" in message
     assert "timeout': -1" in message
-    assert "max_records': 0" in message

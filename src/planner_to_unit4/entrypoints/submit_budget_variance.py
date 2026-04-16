@@ -10,6 +10,7 @@ from planner_to_unit4.infrastructure.budget_variance_items_provider import (
 from planner_to_unit4.infrastructure.spark_budget_variance_reader import (
     SparkBudgetVarianceReader,
 )
+from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMonitor
 from planner_to_unit4.infrastructure.soap_planning_service import SoapPlanningService
 
 
@@ -26,12 +27,10 @@ REQUIRED_KEYS = {
 
 OPTIONAL_DEFAULTS: dict[str, Any] = {
     "max_segment_size": 12000,
-    "max_records": None,
     "timeout": 90,
 }
 
 ALLOWED_KEYS = REQUIRED_KEYS | set(OPTIONAL_DEFAULTS.keys())
-from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMonitor
 
 
 def main(
@@ -39,6 +38,7 @@ def main(
     spark,
     config: dict[str, object],
     log_fn: Callable[[str], None],
+    budget_variance_rows_filter: Callable[[Any], Any] | None = None,
 ) -> SubmitBudgetVariance:
     import requests
 
@@ -46,7 +46,7 @@ def main(
     reader = SparkBudgetVarianceReader(
         spark=spark,
         table_name=validated["source_table_name"],
-        max_records=validated["max_records"],
+        rows_filter=budget_variance_rows_filter,
     )
     items_provider = BudgetVarianceItemsProvider(
         reader=reader,
@@ -100,13 +100,6 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     elif timeout <= 0:
         invalid_ranges["timeout"] = timeout
 
-    max_records = config.get("max_records", OPTIONAL_DEFAULTS["max_records"])
-    if max_records is not None:
-        if not _is_int(max_records):
-            invalid_types["max_records"] = type(max_records).__name__
-        elif max_records <= 0:
-            invalid_ranges["max_records"] = max_records
-
     if missing_keys or unknown_keys or invalid_types or invalid_ranges:
         raise ValueError(
             "Invalid config: "
@@ -126,7 +119,6 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
         "password": config["password"],
         "segment_monitoring_table": config["segment_monitoring_table"],
         "max_segment_size": max_segment_size,
-        "max_records": max_records,
         "timeout": timeout,
     }
 

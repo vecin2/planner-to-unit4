@@ -1,14 +1,37 @@
-from planner_to_unit4.infrastructure.budget_variance_reader import BudgetVarianceReader
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
 
 
 class SparkBudgetVarianceReader:
-    def __init__(self, spark, table_name: str, max_records: int | None = None):
+    def __init__(
+        self,
+        spark,
+        table_name: str,
+        rows_filter: Callable[[Any], Any] | None = None,
+    ):
+        if rows_filter is not None and not callable(rows_filter):
+            raise TypeError("budget_variance_rows_filter must be callable")
+
         self.spark = spark
         self.table_name = table_name
-        self.max_records = max_records
+        self.rows_filter = rows_filter
 
     def read_rows(self) -> list[dict]:
         df = self.spark.table(self.table_name)
-        if self.max_records is not None:
-            df = df.limit(self.max_records)
+        if self.rows_filter is not None:
+            filtered_df = self.rows_filter(df)
+            if not _is_spark_dataframe(filtered_df):
+                raise TypeError("budget_variance_rows_filter must return a Spark DataFrame")
+            df = filtered_df
         return [row.asDict() for row in df.collect()]
+
+
+def _is_spark_dataframe(value: object) -> bool:
+    try:
+        from pyspark.sql import DataFrame
+    except ModuleNotFoundError:
+        return hasattr(value, "collect")
+
+    return isinstance(value, DataFrame)
