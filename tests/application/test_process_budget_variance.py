@@ -154,7 +154,15 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
         message=failure_message,
     )
 
-    with pytest.raises(RuntimeError, match="Budget variance submission failed for 1 segments"):
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Budget variance submission failed "
+            "\\(pipeline_run_id=fabric-run-789, failed_segments=1\\): "
+            "\\[segment=1, http_status=200, "
+            "message=Row 2 col dim_3: B102397 is not a legal RESNO\\]"
+        ),
+    ):
         runner.run_process_budget_variance(run_id, snapshot_path)
 
     runner.assert_segments_failed(expected_failures)
@@ -197,7 +205,14 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
         message=failure_message,
     )
 
-    with pytest.raises(RuntimeError, match="Budget variance submission failed for 1 segments"):
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Budget variance submission failed "
+            "\\(pipeline_run_id=fabric-run-987, failed_segments=1\\): "
+            "\\[segment=1, http_status=500, message=Something went wrong\\.\\]"
+        ),
+    ):
         runner.run_process_budget_variance(run_id, snapshot_path)
 
     runner.assert_segments_failed(expected_failures)
@@ -236,10 +251,89 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
         message="network timeout",
     )
 
-    with pytest.raises(TimeoutError, match="network timeout"):
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Budget variance submission failed "
+            "\\(pipeline_run_id=fabric-run-654, failed_segments=1\\): "
+            "\\[segment=1, http_status=None, message=network timeout\\]"
+        ),
+    ) as excinfo:
         runner.run_process_budget_variance(run_id, snapshot_path)
 
+    assert isinstance(excinfo.value.__cause__, TimeoutError)
+    assert str(excinfo.value.__cause__) == "network timeout"
+
     runner.assert_segments_failed(expected_failures)
+
+
+def test_process_budget_variance_failure_summary_caps_segments_to_five() -> None:
+    rows = [make_row(description=f"Row{i}", amount=i) for i in range(1, 7)]
+
+    run_id = "fabric-run-555"
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-555"
+    submitted_at = datetime(2026, 4, 12, 16, 0, 0)
+    planning_service = FakePlanningService(
+        response={
+            "order_no": None,
+            "http_status": 400,
+            "message": "bad row",
+        }
+    )
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=planning_service,
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    summary = str(excinfo.value)
+    assert "failed_segments=6" in summary
+    assert "segment=1" in summary
+    assert "segment=5" in summary
+    assert "segment=6" not in summary
+    assert "... +1 more" in summary
+
+
+def test_process_budget_variance_failure_summary_caps_message_to_4000_chars() -> None:
+    row1 = make_row(description="Row1", amount=10)
+
+    run_id = "fabric-run-556"
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-556"
+    submitted_at = datetime(2026, 4, 12, 16, 30, 0)
+    planning_service = FakePlanningService(
+        response={
+            "order_no": None,
+            "http_status": 400,
+            "message": "x" * 5000,
+        }
+    )
+
+    runner = ApplicationRunner.build(
+        rows=[row1],
+        version=version,
+        batch=batch,
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=planning_service,
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    summary = str(excinfo.value)
+    assert len(summary) == 4000
+    assert summary.endswith("... (truncated)")
 
 
 def test_process_budget_variance_applies_retention_when_configured() -> None:
