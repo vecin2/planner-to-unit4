@@ -56,26 +56,31 @@ class SoapPlanningService(PlanningService):
             "SOAPAction": SOAP_ACTION,
         }
 
-        response = self.http_post(
-            self.endpoint,
-            data=soap_payload,
-            headers=headers,
-            timeout=self.timeout,
-        )
+        try:
+            response = self.http_post(
+                self.endpoint,
+                data=soap_payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
+        except Exception as exc:  # noqa: BLE001 - boundary IO failure
+            raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
 
         if response.status_code != 200:
             parsed_message = parse_postback_fault_message(response.text)
             message = parsed_message or _truncate_message(response.text)
-            self.log_fn(
-                f"SOAP response: http_status={response.status_code} message={message}"
-            )
+            self.log_fn(f"SOAP response: http_status={response.status_code} message={message}")
             return {
                 "order_no": None,
                 "http_status": response.status_code,
                 "message": message,
+                "request_payload": soap_payload,
             }
 
-        parsed = parse_object_postback_response(response.text)
+        try:
+            parsed = parse_object_postback_response(response.text)
+        except Exception as exc:  # noqa: BLE001 - parser failure
+            raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
         self.log_fn(
             "SOAP response: "
             f"http_status={response.status_code} order_no={parsed.get('order_no')} "
@@ -85,7 +90,14 @@ class SoapPlanningService(PlanningService):
             "order_no": parsed.get("order_no"),
             "http_status": response.status_code,
             "message": parsed.get("message"),
+            "request_payload": soap_payload,
         }
+
+
+class SoapSubmissionError(RuntimeError):
+    def __init__(self, message: str, request_payload: str) -> None:
+        super().__init__(message)
+        self.request_payload = request_payload
 
 
 def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
@@ -96,4 +108,4 @@ def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
     suffix = "... (truncated)"
     if limit <= len(suffix):
         return suffix[:limit]
-    return f"{message[:limit - len(suffix)]}{suffix}"
+    return f"{message[: limit - len(suffix)]}{suffix}"

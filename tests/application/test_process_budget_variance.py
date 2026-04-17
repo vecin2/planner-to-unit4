@@ -2,11 +2,13 @@ from datetime import datetime
 
 import pytest
 
+from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmissionError
 from tests.support.application_runner import ApplicationRunner
 from tests.support.fakes import FakePlanningService, FakeSegmentMonitor
 
 
 def make_row(
+    record_no=1,
     client="BI",
     description="Test",
     account="1000",
@@ -20,6 +22,7 @@ def make_row(
     amount=1.0,
 ):
     return {
+        "record_no": record_no,
         "Client": client,
         "Description": description,
         "Account": account,
@@ -42,8 +45,8 @@ def with_version_and_batch(row: dict, version: str, batch: str) -> dict:
 
 
 def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None:
-    row1 = make_row(description="Row1", amount=10)
-    row2 = make_row(description="Row2", amount=20)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
+    row2 = make_row(record_no=2, description="Row2", amount=20)
 
     rows = [row1, row2]
 
@@ -79,9 +82,9 @@ def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None
 
 
 def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_small() -> None:
-    row1 = make_row(description="Row1", amount=10)
-    row2 = make_row(description="Row2", amount=20)
-    row3 = make_row(description="Row3", amount=30)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
+    row2 = make_row(record_no=2, description="Row2", amount=20)
+    row3 = make_row(record_no=3, description="Row3", amount=30)
 
     rows = [row1, row2, row3]
 
@@ -118,7 +121,7 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
 
 
 def test_process_budget_variance_records_failed_segment_when_log_items_present() -> None:
-    row1 = make_row(description="Row1", amount=10)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
 
     rows = [row1]
 
@@ -169,7 +172,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
 
 
 def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
-    row1 = make_row(description="Row1", amount=10)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
 
     rows = [row1]
 
@@ -219,7 +222,7 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
 
 
 def test_process_budget_variance_records_failed_segment_on_exception() -> None:
-    row1 = make_row(description="Row1", amount=10)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
 
     rows = [row1]
 
@@ -232,7 +235,10 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
 
     class RaisingPlanningService:
         def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
-            raise TimeoutError("network timeout")
+            raise SoapSubmissionError(
+                "network timeout",
+                request_payload="<request>payload</request>",
+            )
 
     runner = ApplicationRunner.build(
         rows=rows,
@@ -261,14 +267,14 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
     ) as excinfo:
         runner.run_process_budget_variance(run_id, snapshot_path)
 
-    assert isinstance(excinfo.value.__cause__, TimeoutError)
+    assert isinstance(excinfo.value.__cause__, SoapSubmissionError)
     assert str(excinfo.value.__cause__) == "network timeout"
 
     runner.assert_segments_failed(expected_failures)
 
 
 def test_process_budget_variance_failure_summary_caps_segments_to_five() -> None:
-    rows = [make_row(description=f"Row{i}", amount=i) for i in range(1, 7)]
+    rows = [make_row(record_no=i, description=f"Row{i}", amount=i) for i in range(1, 7)]
 
     run_id = "fabric-run-555"
     version = "ADJ"
@@ -304,7 +310,7 @@ def test_process_budget_variance_failure_summary_caps_segments_to_five() -> None
 
 
 def test_process_budget_variance_failure_summary_caps_message_to_4000_chars() -> None:
-    row1 = make_row(description="Row1", amount=10)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
 
     run_id = "fabric-run-556"
     version = "ADJ"
@@ -337,7 +343,7 @@ def test_process_budget_variance_failure_summary_caps_message_to_4000_chars() ->
 
 
 def test_process_budget_variance_applies_retention_when_configured() -> None:
-    row1 = make_row(description="Row1", amount=10)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
 
     rows = [row1]
 
@@ -370,7 +376,7 @@ def test_process_budget_variance_applies_retention_when_configured() -> None:
 
 
 def test_process_budget_variance_continues_when_retention_fails() -> None:
-    row1 = make_row(description="Row1", amount=10)
+    row1 = make_row(record_no=1, description="Row1", amount=10)
 
     rows = [row1]
 
@@ -396,3 +402,92 @@ def test_process_budget_variance_continues_when_retention_fails() -> None:
 
     assert any("Retention cleanup warning" in message for message in messages)
     assert runner.segment_monitor.submissions
+
+
+class FakeFailedRequestFileSystem:
+    def __init__(self) -> None:
+        self.mkdirs_calls: list[str] = []
+        self.put_calls: list[tuple[str, str, bool]] = []
+
+    def mkdirs(self, path: str) -> None:
+        self.mkdirs_calls.append(path)
+
+    def put(self, path: str, text: str, overwrite: bool) -> None:
+        self.put_calls.append((path, text, overwrite))
+
+
+def test_process_budget_variance_saves_failed_request_payload_for_failed_segment() -> None:
+    row1 = make_row(record_no=1, description="Row1", amount=10)
+
+    run_id = "fabric-run-700"
+    snapshot_path = "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/plan_data_sample.json"
+    submitted_at = datetime(2026, 4, 12, 17, 0, 0)
+    planning_service = FakePlanningService(
+        response={
+            "order_no": None,
+            "http_status": 400,
+            "message": "bad row",
+            "request_payload": "<soap>request</soap>",
+        }
+    )
+    failed_request_fs = FakeFailedRequestFileSystem()
+
+    runner = ApplicationRunner.build(
+        rows=[row1],
+        version="ADJ",
+        batch="WKD",
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=planning_service,
+        failed_request_fs=failed_request_fs,
+    )
+
+    with pytest.raises(RuntimeError):
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert failed_request_fs.mkdirs_calls == [
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/failed_requests"
+    ]
+    assert len(failed_request_fs.put_calls) == 1
+    file_path, payload, overwrite = failed_request_fs.put_calls[0]
+    assert file_path.endswith("_fabric-run-700_segment_1.xml")
+    assert payload == "<soap>request</soap>"
+    assert overwrite is True
+
+
+def test_process_budget_variance_saves_failed_request_payload_on_exception() -> None:
+    row1 = make_row(record_no=1, description="Row1", amount=10)
+
+    run_id = "fabric-run-701"
+    snapshot_path = "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/plan_data_sample.json"
+    submitted_at = datetime(2026, 4, 12, 17, 30, 0)
+    failed_request_fs = FakeFailedRequestFileSystem()
+
+    class RaisingPlanningService:
+        def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
+            raise SoapSubmissionError(
+                "network timeout",
+                request_payload="<soap>request-exception</soap>",
+            )
+
+    runner = ApplicationRunner.build(
+        rows=[row1],
+        version="ADJ",
+        batch="WKD",
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=RaisingPlanningService(),
+        failed_request_fs=failed_request_fs,
+    )
+
+    with pytest.raises(RuntimeError):
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert failed_request_fs.mkdirs_calls == [
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/failed_requests"
+    ]
+    assert len(failed_request_fs.put_calls) == 1
+    file_path, payload, overwrite = failed_request_fs.put_calls[0]
+    assert file_path.endswith("_fabric-run-701_segment_1.xml")
+    assert payload == "<soap>request-exception</soap>"
+    assert overwrite is True

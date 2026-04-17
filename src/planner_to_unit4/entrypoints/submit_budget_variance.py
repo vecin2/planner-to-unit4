@@ -40,6 +40,7 @@ def main(
     config: dict[str, object],
     log_fn: Callable[[str], None],
     budget_variance_rows_filter: Callable[[Any], Any] | None = None,
+    failed_request_fs: Any | None = None,
 ) -> SubmitBudgetVariance:
     import requests
 
@@ -74,6 +75,7 @@ def main(
         log_fn=log_fn,
         max_segment_size=validated["max_segment_size"],
         segment_monitor_retention_days=validated["segment_monitor_retention_days"],
+        failed_request_fs=failed_request_fs,
     )
 
 

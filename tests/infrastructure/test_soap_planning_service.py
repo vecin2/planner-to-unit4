@@ -1,4 +1,9 @@
-from planner_to_unit4.infrastructure.soap_planning_service import SoapPlanningService
+import pytest
+
+from planner_to_unit4.infrastructure.soap_planning_service import (
+    SoapPlanningService,
+    SoapSubmissionError,
+)
 
 
 class FakeResponse:
@@ -67,6 +72,7 @@ def test_send_segment_returns_order_no_on_success() -> None:
     assert result["order_no"] == "51"
     assert result["http_status"] == 200
     assert result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    assert isinstance(result["request_payload"], str)
     assert "SOAPAction" in captured["headers"]
 
 
@@ -99,6 +105,7 @@ def test_send_segment_returns_faultstring_on_non_200() -> None:
     assert result["order_no"] is None
     assert result["http_status"] == 500
     assert result["message"] == "s:Server.GeneralError: Something went wrong."
+    assert isinstance(result["request_payload"], str)
 
 
 def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
@@ -121,3 +128,23 @@ def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
     assert result["order_no"] is None
     assert result["http_status"] == 500
     assert result["message"] == response_text
+    assert isinstance(result["request_payload"], str)
+
+
+def test_send_segment_raises_submission_error_with_request_payload() -> None:
+    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+        raise TimeoutError("network timeout")
+
+    service = SoapPlanningService(
+        endpoint="https://example.test/service.svc",
+        username="user",
+        client="bi",
+        password="secret",
+        http_post=fake_post,
+        log_fn=lambda _message: None,
+    )
+
+    with pytest.raises(SoapSubmissionError, match="network timeout") as excinfo:
+        service.send_segment([{"Client": "BI"}])
+
+    assert isinstance(excinfo.value.request_payload, str)

@@ -9,6 +9,7 @@ def test_items_provider_enriches_rows_with_version_and_batch() -> None:
     reader.set_rows(
         [
             {
+                "record_no": 1,
                 "Client": "BI",
                 "Description": "Test",
                 "Account": "1000",

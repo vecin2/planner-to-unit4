@@ -25,6 +25,7 @@ def test_spark_budget_variance_reader_applies_rows_filter() -> None:
 
     expected_rows = [
         {
+            "record_no": 2,
             "Client": "BI",
             "Description": "Test",
             "Account": "1000",
@@ -38,6 +39,7 @@ def test_spark_budget_variance_reader_applies_rows_filter() -> None:
             "CurAmount": 12.25,
         },
         {
+            "record_no": 1,
             "Client": "BI",
             "Description": "Test 2",
             "Account": "2000",
@@ -74,6 +76,36 @@ def test_spark_budget_variance_reader_rejects_non_callable_filter() -> None:
 
 
 @pytest.mark.spark
+def test_spark_budget_variance_reader_orders_by_record_no_when_no_filter() -> None:
+    if SparkSession is None:
+        pytest.skip("pyspark is not installed")
+
+    spark = create_spark_session("budget-variance-reader-test")
+    database_name, table_name = create_temp_table(
+        spark,
+        database_prefix="budget_variance_test",
+        table_name="budget_variance_rows",
+    )
+
+    dataframe = spark.createDataFrame(
+        [
+            {"record_no": 3, "Client": "BI"},
+            {"record_no": 1, "Client": "BI"},
+            {"record_no": 2, "Client": "BI"},
+        ]
+    )
+    dataframe.write.mode("overwrite").saveAsTable(table_name)
+
+    reader = SparkBudgetVarianceReader(spark=spark, table_name=table_name)
+
+    rows = reader.read_rows()
+
+    assert [row["record_no"] for row in rows] == [1, 2, 3]
+
+    cleanup_temp_table(spark, table_name, database_name)
+
+
+@pytest.mark.spark
 def test_spark_budget_variance_reader_rejects_non_dataframe_filter_result() -> None:
     if SparkSession is None:
         pytest.skip("pyspark is not installed")
@@ -85,7 +117,7 @@ def test_spark_budget_variance_reader_rejects_non_dataframe_filter_result() -> N
         table_name="budget_variance_rows",
     )
 
-    dataframe = spark.createDataFrame([{"Client": "BI"}])
+    dataframe = spark.createDataFrame([{"record_no": 1, "Client": "BI"}])
     dataframe.write.mode("overwrite").saveAsTable(table_name)
 
     reader = SparkBudgetVarianceReader(

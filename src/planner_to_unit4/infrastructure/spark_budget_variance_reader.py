@@ -25,6 +25,8 @@ class SparkBudgetVarianceReader:
             if not _is_spark_dataframe(filtered_df):
                 raise TypeError("budget_variance_rows_filter must return a Spark DataFrame")
             df = filtered_df
+        else:
+            df = df.orderBy("record_no")
         return [row.asDict() for row in df.collect()]
 
 

@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
+from typing import Protocol
 
 from planner_to_unit4.infrastructure.budget_variance_items_provider import (
     BudgetVarianceItemsProvider,
 )
 from planner_to_unit4.infrastructure.planning_service import PlanningService
 from planner_to_unit4.infrastructure.segment_monitor import SegmentMonitor
+from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmissionError
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,12 @@ class SegmentFailureDetail:
     message: str | None
 
 
+class FailedRequestFileSystem(Protocol):
+    def mkdirs(self, path: str) -> None: ...
+
+    def put(self, path: str, text: str, overwrite: bool) -> None: ...
+
+
 @dataclass
 class SubmitBudgetVariance:
     items_provider: BudgetVarianceItemsProvider
@@ -33,6 +41,7 @@ class SubmitBudgetVariance:
     log_fn: Callable[[str], None]
     max_segment_size: int = 15000
     segment_monitor_retention_days: int | None = None
+    failed_request_fs: FailedRequestFileSystem | None = None
     clock: Callable[[], datetime] = datetime.utcnow
 
     def run(self, pipeline_run_id: str, snapshot_path: str) -> ProcessBudgetVarianceResult:
@@ -64,6 +73,7 @@ class SubmitBudgetVariance:
             try:
                 result = self.planning_service.send_segment(segment)
             except Exception as exc:  # noqa: BLE001 - boundary IO failure
+                failure_time_utc = self.clock()
                 failure_detail = SegmentFailureDetail(
                     segment_index=segment_index,
                     http_status=None,
@@ -77,7 +87,15 @@ class SubmitBudgetVariance:
                     segment_size=len(segment),
                     http_status=failure_detail.http_status,
                     message=failure_detail.message,
-                    submitted_at_utc=self.clock(),
+                    submitted_at_utc=failure_time_utc,
+                )
+                request_payload = _extract_request_payload(exc)
+                self._save_failed_request_payload(
+                    snapshot_path=snapshot_path,
+                    pipeline_run_id=pipeline_run_id,
+                    segment_index=segment_index,
+                    request_payload=request_payload,
+                    now_utc=failure_time_utc,
                 )
                 self.log_fn(f"Recorded failed segment: segment_index={segment_index} error={exc}")
                 raise RuntimeError(
@@ -107,6 +125,13 @@ class SubmitBudgetVariance:
             )
             if failure_detail is not None:
                 failure_details.append(failure_detail)
+                self._save_failed_request_payload(
+                    snapshot_path=snapshot_path,
+                    pipeline_run_id=pipeline_run_id,
+                    segment_index=segment_index,
+                    request_payload=result.get("request_payload"),
+                    now_utc=self.clock(),
+                )
 
         self.log_fn(
             "Completed budget variance submission: "
@@ -124,6 +149,39 @@ class SubmitBudgetVariance:
             status="COMPLETED",
             snapshot_path=snapshot_path,
         )
+
+    def _save_failed_request_payload(
+        self,
+        *,
+        snapshot_path: str,
+        pipeline_run_id: str,
+        segment_index: int,
+        request_payload: object,
+        now_utc: datetime,
+    ) -> None:
+        if self.failed_request_fs is None:
+            return
+        if not isinstance(request_payload, str) or not request_payload:
+            return
+
+        folder_path = _build_failed_requests_path(snapshot_path)
+        file_name = _build_failed_request_file_name(
+            pipeline_run_id=pipeline_run_id,
+            segment_index=segment_index,
+            now_utc=now_utc,
+        )
+        file_path = f"{folder_path}/{file_name}"
+
+        try:
+            self.failed_request_fs.mkdirs(folder_path)
+            self.failed_request_fs.put(file_path, request_payload, True)
+            self.log_fn(
+                f"Saved failed SOAP request payload: segment_index={segment_index} path={file_path}"
+            )
+        except Exception as exc:  # noqa: BLE001 - payload save should not block submission
+            self.log_fn(
+                f"Failed request payload warning: segment_index={segment_index} error={exc}"
+            )
 
 
 def _segment_rows(rows: list, segment_size: int):
@@ -213,3 +271,27 @@ def _truncate_message(message: str, max_chars: int) -> str:
     if max_chars <= len(suffix):
         return suffix[:max_chars]
     return f"{message[: max_chars - len(suffix)]}{suffix}"
+
+
+def _extract_request_payload(exc: Exception) -> str | None:
+    if isinstance(exc, SoapSubmissionError):
+        return exc.request_payload
+    request_payload = getattr(exc, "request_payload", None)
+    if isinstance(request_payload, str):
+        return request_payload
+    return None
+
+
+def _build_failed_requests_path(snapshot_path: str) -> str:
+    base_path = snapshot_path.rsplit("/", 1)[0]
+    return f"{base_path}/failed_requests"
+
+
+def _build_failed_request_file_name(
+    *,
+    pipeline_run_id: str,
+    segment_index: int,
+    now_utc: datetime,
+) -> str:
+    timestamp = now_utc.strftime("%H%M%S%f")
+    return f"{timestamp}_{pipeline_run_id}_segment_{segment_index}.xml"
