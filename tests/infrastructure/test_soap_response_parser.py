@@ -4,119 +4,10 @@ import pytest
 
 from planner_to_unit4.infrastructure.soap_response_parser import (
     PostbackLogItem,
-    parse_object_postback_response,
     parse_object_postback_response_canonical,
     parse_postback_fault_canonical,
-    parse_postback_fault_message,
     parse_segment_submission_response,
 )
-
-
-def test_parse_object_postback_response_extracts_order_no_and_message() -> None:
-    xml_text = """
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-       <s:Body>
-          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
-             <ObjectPostBackResult>
-                <LogItems>
-                   <PostbackLogItem>
-                      <Row>2</Row>
-                      <Column>dim_3</Column>
-                      <Message>B102397 is not a legal RESNO</Message>
-                   </PostbackLogItem>
-                </LogItems>
-                <StatusItems>
-                   <PostbackStatusItem>
-                      <Name>orderno</Name>
-                      <Value>51</Value>
-                      <Message>Transactions posted for batch processing. Order no.: 51 (PL400).</Message>
-                   </PostbackStatusItem>
-                </StatusItems>
-             </ObjectPostBackResult>
-          </ObjectPostBackResponse>
-       </s:Body>
-    </s:Envelope>
-    """
-
-    result = parse_object_postback_response(xml_text)
-
-    assert result["order_no"] == "51"
-    assert (
-        result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400).; "
-        "Row 2 col dim_3: B102397 is not a legal RESNO"
-    )
-
-
-def test_parse_object_postback_response_aggregates_log_items() -> None:
-    xml_text = """
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-       <s:Body>
-          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
-             <ObjectPostBackResult>
-                <LogItems>
-                   <PostbackLogItem>
-                      <Row>2</Row>
-                      <Column>dim_3</Column>
-                      <Message>B102397 is not a legal RESNO</Message>
-                   </PostbackLogItem>
-                   <PostbackLogItem>
-                      <Row></Row>
-                      <Column></Column>
-                      <Message></Message>
-                   </PostbackLogItem>
-                </LogItems>
-                <StatusItems/>
-             </ObjectPostBackResult>
-          </ObjectPostBackResponse>
-       </s:Body>
-    </s:Envelope>
-    """
-
-    result = parse_object_postback_response(xml_text)
-
-    assert result["order_no"] is None
-    assert result["message"] == "Row 2 col dim_3: B102397 is not a legal RESNO; Row ? col ?: ?"
-
-
-def test_parse_postback_fault_message_extracts_faultstring() -> None:
-    xml_text = """
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-       <s:Body>
-          <s:Fault>
-             <faultcode>s:Server.GeneralError</faultcode>
-             <faultstring xml:lang="en-US">Something went wrong.</faultstring>
-          </s:Fault>
-       </s:Body>
-    </s:Envelope>
-    """
-
-    message = parse_postback_fault_message(xml_text)
-
-    assert message == "s:Server.GeneralError: Something went wrong."
-
-
-def test_parse_postback_fault_message_falls_back_to_log_items() -> None:
-    xml_text = """
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-       <s:Body>
-          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
-             <ObjectPostBackResult>
-                <LogItems>
-                   <PostbackLogItem>
-                      <Row>2</Row>
-                      <Column>dim_3</Column>
-                      <Message>B102397 is not a legal RESNO</Message>
-                   </PostbackLogItem>
-                </LogItems>
-             </ObjectPostBackResult>
-          </ObjectPostBackResponse>
-       </s:Body>
-    </s:Envelope>
-    """
-
-    message = parse_postback_fault_message(xml_text)
-
-    assert message == "Row 2 col dim_3: B102397 is not a legal RESNO"
 
 
 def test_parse_object_postback_response_canonical_returns_structured_log_items() -> None:
@@ -154,6 +45,11 @@ def test_parse_object_postback_response_canonical_returns_structured_log_items()
     assert parsed.order_no == "51"
     assert (
         parsed.status_message == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    )
+    assert (
+        parsed.message == "Transactions posted for batch processing. Order no.: 51 (PL400).; "
+        "Row 1151 col dim_4: B102395 is not a legal BUS; "
+        "Row 0 col ?: There are more errors, but only the first 100 errors is returned from the web service"
     )
     assert parsed.log_items == [
         PostbackLogItem(
@@ -209,6 +105,33 @@ def test_parse_postback_fault_canonical_extracts_fault_and_log_items() -> None:
     ]
 
 
+def test_parse_postback_fault_canonical_falls_back_to_log_items_message() -> None:
+    xml_text = """
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+       <s:Body>
+          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
+             <ObjectPostBackResult>
+                <LogItems>
+                   <PostbackLogItem>
+                      <Row>2</Row>
+                      <Column>dim_3</Column>
+                      <Message>B102397 is not a legal RESNO</Message>
+                   </PostbackLogItem>
+                </LogItems>
+             </ObjectPostBackResult>
+          </ObjectPostBackResponse>
+       </s:Body>
+    </s:Envelope>
+    """
+
+    parsed = parse_postback_fault_canonical(xml_text)
+
+    assert parsed is not None
+    assert parsed.fault_code is None
+    assert parsed.fault_string is None
+    assert parsed.message == "Row 2 col dim_3: B102397 is not a legal RESNO"
+
+
 def test_parse_postback_fault_canonical_returns_none_for_invalid_xml() -> None:
     assert parse_postback_fault_canonical("not xml") is None
 
@@ -245,6 +168,10 @@ def test_parse_segment_submission_response_for_200_status() -> None:
     assert parsed.order_no == "51"
     assert (
         parsed.status_message == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    )
+    assert (
+        parsed.message == "Transactions posted for batch processing. Order no.: 51 (PL400).; "
+        "Row 2 col dim_3: B102397 is not a legal RESNO"
     )
     assert parsed.fault_code is None
     assert parsed.fault_string is None
@@ -301,6 +228,6 @@ def test_parse_segment_submission_response_non_200_returns_none_for_invalid_xml(
     assert parse_segment_submission_response("not xml", http_status=500) is None
 
 
-def test_parse_object_postback_response_raises_on_invalid_xml() -> None:
+def test_parse_object_postback_response_canonical_raises_on_invalid_xml() -> None:
     with pytest.raises(ElementTree.ParseError):
-        parse_object_postback_response("not xml")
+        parse_object_postback_response_canonical("not xml")

@@ -66,14 +66,6 @@ def parse_segment_submission_response(
     )
 
 
-def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
-    parsed = parse_object_postback_response_canonical(xml_text)
-    return {
-        "order_no": parsed.order_no,
-        "message": parsed.message,
-    }
-
-
 def parse_object_postback_response_canonical(xml_text: str) -> ParsedObjectPostbackResponse:
     root = ElementTree.fromstring(xml_text)
 
@@ -103,13 +95,6 @@ def parse_object_postback_response_canonical(xml_text: str) -> ParsedObjectPostb
         log_items=log_items,
         message=message,
     )
-
-
-def parse_postback_fault_message(xml_text: str) -> str | None:
-    parsed = parse_postback_fault_canonical(xml_text)
-    if parsed is None:
-        return None
-    return parsed.message
 
 
 def parse_postback_fault_canonical(xml_text: str) -> ParsedPostbackFault | None:
