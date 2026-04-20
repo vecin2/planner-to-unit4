@@ -22,6 +22,19 @@ def main(
     config: dict[str, object],
     log_fn: Callable[[str], None],
 ) -> ArchiveFile:
+    """Create a configured file archiver.
+
+    Runtime arguments (not part of ``config``):
+    - ``fs``: filesystem object used for ``mkdirs``, ``mv``, ``ls``, ``rm``.
+    - ``log_fn``: callable used to emit operational logs.
+
+    Config keys (validated by ``validate_config``):
+    Required
+    - ``archive_root_path`` (str)
+
+    Optional
+    - ``archive_retention_days`` (int | None, default ``None``)
+    """
     validated = validate_config(config)
     return ArchiveFile(
         fs=fs,
@@ -32,6 +45,16 @@ def main(
 
 
 def validate_config(config: dict[str, object]) -> dict[str, object]:
+    """Validate archive configuration.
+
+    Validation rules:
+    - unknown keys are rejected
+    - missing required keys are rejected
+    - required keys must be strings
+    - ``archive_retention_days`` is optional and must be integer > 0
+
+    Raises ``ValueError`` with a structured summary when validation fails.
+    """
     missing_keys = sorted(REQUIRED_KEYS - config.keys())
     unknown_keys = sorted(set(config.keys()) - ALLOWED_KEYS)
     invalid_types: dict[str, str] = {}
