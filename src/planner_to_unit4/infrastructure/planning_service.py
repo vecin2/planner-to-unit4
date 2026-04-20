@@ -1,11 +1,7 @@
 from typing import Protocol
 from typing import TypedDict
 
-
-class ParsedLogItem(TypedDict):
-    row: int | None
-    column: str | None
-    message: str | None
+from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 
 
 class SegmentSubmissionResult(TypedDict, total=False):
@@ -16,7 +12,7 @@ class SegmentSubmissionResult(TypedDict, total=False):
     status_message: str | None
     fault_code: str | None
     fault_string: str | None
-    log_items: list[ParsedLogItem]
+    log_items: list[PostbackLogItem]
 
 
 class PlanningService(Protocol):

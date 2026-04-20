@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Callable
 
 from planner_to_unit4.infrastructure.planning_service import (
-    ParsedLogItem,
     PlanningService,
     SegmentSubmissionResult,
 )
@@ -14,7 +13,6 @@ from planner_to_unit4.infrastructure.soap_envelope_builder import (
 )
 from planner_to_unit4.infrastructure.soap_http_client import HttpPost
 from planner_to_unit4.infrastructure.soap_response_parser import (
-    PostbackLogItem,
     parse_object_postback_response_canonical,
     parse_postback_fault_canonical,
 )
@@ -86,9 +84,7 @@ class SoapPlanningService(PlanningService):
                 "request_payload": soap_payload,
                 "fault_code": None if parsed_fault is None else parsed_fault.fault_code,
                 "fault_string": None if parsed_fault is None else parsed_fault.fault_string,
-                "log_items": []
-                if parsed_fault is None
-                else _serialize_log_items(parsed_fault.log_items),
+                "log_items": [] if parsed_fault is None else parsed_fault.log_items,
             }
 
         try:
@@ -106,7 +102,7 @@ class SoapPlanningService(PlanningService):
             "message": parsed.message,
             "request_payload": soap_payload,
             "status_message": parsed.status_message,
-            "log_items": _serialize_log_items(parsed.log_items),
+            "log_items": parsed.log_items,
         }
 
 
@@ -125,14 +121,3 @@ def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
     if limit <= len(suffix):
         return suffix[:limit]
     return f"{message[: limit - len(suffix)]}{suffix}"
-
-
-def _serialize_log_items(log_items: list[PostbackLogItem]) -> list[ParsedLogItem]:
-    return [
-        {
-            "row": item.row,
-            "column": item.column,
-            "message": item.message,
-        }
-        for item in log_items
-    ]
