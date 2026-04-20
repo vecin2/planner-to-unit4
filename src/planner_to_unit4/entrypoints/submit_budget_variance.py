@@ -60,9 +60,9 @@ def main(
     - ``version`` (str)
     - ``batch`` (str)
     - ``endpoint`` (str)
-    - ``username`` (str)
-    - ``client`` (str)
-    - ``password`` (str)
+    - ``username`` (str): integration username used for SOAP authentication.
+    - ``client`` (str): authentication client context for the user (``bi`` or ``c1``).
+    - ``password`` (str): integration user password used for SOAP authentication.
     - ``segment_monitoring_table`` (str)
 
     Optional

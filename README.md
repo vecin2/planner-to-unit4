@@ -36,9 +36,9 @@ Required config keys:
 | `version` | `str` | Value mapped to Unit4 `Version`. |
 | `batch` | `str` | Value mapped to Unit4 `Batch`. |
 | `endpoint` | `str` | SOAP endpoint URL. |
-| `username` | `str` | Unit4 integration username. |
-| `client` | `str` | Unit4 client code. |
-| `password` | `str` | Unit4 integration password. |
+| `username` | `str` | Unit4 integration username used for SOAP authentication. |
+| `client` | `str` | Authentication client context for the user (`bi` or `c1`). |
+| `password` | `str` | Password for the integration user (authentication credential). |
 | `segment_monitoring_table` | `str` | Spark table where segment monitoring rows are written. |
 
 Optional config keys:
