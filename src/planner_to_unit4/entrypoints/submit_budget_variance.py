@@ -42,6 +42,34 @@ def main(
     budget_variance_rows_filter: Callable[[Any], Any] | None = None,
     failed_request_fs: Any | None = None,
 ) -> SubmitBudgetVariance:
+    """Create a configured budget-variance submitter.
+
+    Runtime arguments (not part of ``config``):
+    - ``spark``: Spark session used for table reads and monitor writes.
+    - ``log_fn``: callable used to emit operational logs.
+    - ``budget_variance_rows_filter``: optional callable that receives a Spark
+      DataFrame and must return a Spark DataFrame. If omitted, rows are ordered
+      by ``record_no``.
+    - ``failed_request_fs``: optional filesystem object with ``mkdirs`` and
+      ``put`` methods. When provided, failed SOAP requests are saved next to the
+      archived snapshot path under ``failed_requests``.
+
+    Config keys (validated by ``validate_config``):
+    Required
+    - ``source_table_name`` (str)
+    - ``version`` (str)
+    - ``batch`` (str)
+    - ``endpoint`` (str)
+    - ``username`` (str): integration username used for SOAP authentication.
+    - ``client`` (str): authentication client context for the user (``bi`` or ``c1``).
+    - ``password`` (str): integration user password used for SOAP authentication.
+    - ``segment_monitoring_table`` (str)
+
+    Optional
+    - ``max_segment_size`` (int, default ``12000``)
+    - ``timeout`` (int, default ``90``)
+    - ``segment_monitor_retention_days`` (int | None, default ``None``)
+    """
     import requests
 
     validated = validate_config(config)
@@ -80,6 +108,17 @@ def main(
 
 
 def validate_config(config: dict[str, object]) -> dict[str, object]:
+    """Validate submitter configuration.
+
+    Validation rules:
+    - unknown keys are rejected
+    - missing required keys are rejected
+    - required keys must be strings
+    - ``max_segment_size`` and ``timeout`` must be integers > 0
+    - ``segment_monitor_retention_days`` is optional and must be integer > 0
+
+    Raises ``ValueError`` with a structured summary when validation fails.
+    """
     missing_keys = sorted(REQUIRED_KEYS - config.keys())
     unknown_keys = sorted(set(config.keys()) - ALLOWED_KEYS)
     invalid_types: dict[str, str] = {}
