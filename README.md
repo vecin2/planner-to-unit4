@@ -9,18 +9,21 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 
 ## Happy Path Flows
 
-### `create_budget_variance_submitter`
-- validates submitter config
+### Budget Variance Submitter
 - reads source rows (ordered by `record_no` when no row filter is provided)
 - segments rows into SOAP requests and sends each segment to Unit4
 - records each successful segment in the monitor table with `status=SUBMITTED`
-- returns `COMPLETED` when all segments succeed
 
-### `create_file_archiver`
-- validates archive config
+### File Archiver
 - moves one source file into a unique archive path under `yyyy=/mm=/dd=` partitions
 - returns archive result with source and destination paths
 - applies optional archive retention cleanup
+
+## Failure and Retention Behavior
+
+- Submitter failures bubble as a single summarized exception message. The message includes up to 5 failed segments and is capped at 4000 characters.
+- When `failed_request_fs` is provided, failed SOAP request payloads are written under the snapshot day folder in `failed_requests/`.
+- Retention cleanup for monitor/archive logs warnings and continues processing if cleanup fails.
 
 ## Configuration
 
@@ -80,12 +83,6 @@ Runtime arguments (not in config):
 | --- | --- | --- |
 | `fs` | filesystem object | Used for `mkdirs`, `mv`, `ls`, and `rm`. |
 | `log_fn` | `Callable[[str], None]` | Receives operational log lines. |
-
-## Failure and Retention Behavior
-
-- Submitter failures bubble as a single summarized exception message. The message includes up to 5 failed segments and is capped at 4000 characters.
-- When `failed_request_fs` is provided, failed SOAP request payloads are written under the snapshot day folder in `failed_requests/`.
-- Retention cleanup for monitor/archive logs warnings and continues processing if cleanup fails.
 
 ## Minimal Examples
 
