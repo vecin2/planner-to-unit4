@@ -13,8 +13,7 @@ from planner_to_unit4.infrastructure.soap_envelope_builder import (
 )
 from planner_to_unit4.infrastructure.soap_http_client import HttpPost
 from planner_to_unit4.infrastructure.soap_response_parser import (
-    parse_object_postback_response_canonical,
-    parse_postback_fault_canonical,
+    parse_segment_submission_response,
 )
 
 
@@ -69,28 +68,27 @@ class SoapPlanningService(PlanningService):
         except Exception as exc:  # noqa: BLE001 - boundary IO failure
             raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
 
-        if response.status_code != 200:
-            parsed_fault = parse_postback_fault_canonical(response.text)
-            message = (
-                parsed_fault.message
-                if parsed_fault is not None
-                else _truncate_message(response.text)
+        try:
+            parsed = parse_segment_submission_response(
+                response.text,
+                http_status=response.status_code,
             )
+        except Exception as exc:  # noqa: BLE001 - parser failure
+            raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
+
+        if parsed is None:
+            message = _truncate_message(response.text)
             self.log_fn(f"SOAP response: http_status={response.status_code} message={message}")
             return {
                 "order_no": None,
                 "http_status": response.status_code,
                 "message": message,
                 "request_payload": soap_payload,
-                "fault_code": None if parsed_fault is None else parsed_fault.fault_code,
-                "fault_string": None if parsed_fault is None else parsed_fault.fault_string,
-                "log_items": [] if parsed_fault is None else parsed_fault.log_items,
+                "fault_code": None,
+                "fault_string": None,
+                "log_items": [],
             }
 
-        try:
-            parsed = parse_object_postback_response_canonical(response.text)
-        except Exception as exc:  # noqa: BLE001 - parser failure
-            raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
         self.log_fn(
             "SOAP response: "
             f"http_status={response.status_code} order_no={parsed.order_no} "
@@ -102,6 +100,8 @@ class SoapPlanningService(PlanningService):
             "message": parsed.message,
             "request_payload": soap_payload,
             "status_message": parsed.status_message,
+            "fault_code": parsed.fault_code,
+            "fault_string": parsed.fault_string,
             "log_items": parsed.log_items,
         }
 

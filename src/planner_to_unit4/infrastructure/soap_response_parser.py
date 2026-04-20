@@ -27,6 +27,45 @@ class ParsedPostbackFault:
     message: str | None
 
 
+@dataclass(frozen=True)
+class ParsedSegmentSubmissionResponse:
+    order_no: str | None
+    status_message: str | None
+    fault_code: str | None
+    fault_string: str | None
+    log_items: list[PostbackLogItem]
+    message: str | None
+
+
+def parse_segment_submission_response(
+    xml_text: str,
+    *,
+    http_status: int,
+) -> ParsedSegmentSubmissionResponse | None:
+    if http_status == 200:
+        parsed = parse_object_postback_response_canonical(xml_text)
+        return ParsedSegmentSubmissionResponse(
+            order_no=parsed.order_no,
+            status_message=parsed.status_message,
+            fault_code=None,
+            fault_string=None,
+            log_items=parsed.log_items,
+            message=parsed.message,
+        )
+
+    parsed_fault = parse_postback_fault_canonical(xml_text)
+    if parsed_fault is None:
+        return None
+    return ParsedSegmentSubmissionResponse(
+        order_no=None,
+        status_message=None,
+        fault_code=parsed_fault.fault_code,
+        fault_string=parsed_fault.fault_string,
+        log_items=parsed_fault.log_items,
+        message=parsed_fault.message,
+    )
+
+
 def parse_object_postback_response(xml_text: str) -> dict[str, str | None]:
     parsed = parse_object_postback_response_canonical(xml_text)
     return {
