@@ -72,6 +72,11 @@ def test_send_segment_returns_order_no_on_success() -> None:
     assert result["order_no"] == "51"
     assert result["http_status"] == 200
     assert result["message"] == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    assert (
+        result["status_message"]
+        == "Transactions posted for batch processing. Order no.: 51 (PL400)."
+    )
+    assert result["log_items"] == []
     assert isinstance(result["request_payload"], str)
     assert "SOAPAction" in captured["headers"]
 
@@ -105,6 +110,9 @@ def test_send_segment_returns_faultstring_on_non_200() -> None:
     assert result["order_no"] is None
     assert result["http_status"] == 500
     assert result["message"] == "s:Server.GeneralError: Something went wrong."
+    assert result["fault_code"] == "s:Server.GeneralError"
+    assert result["fault_string"] == "Something went wrong."
+    assert result["log_items"] == []
     assert isinstance(result["request_payload"], str)
 
 
@@ -128,6 +136,9 @@ def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
     assert result["order_no"] is None
     assert result["http_status"] == 500
     assert result["message"] == response_text
+    assert result["fault_code"] is None
+    assert result["fault_string"] is None
+    assert result["log_items"] == []
     assert isinstance(result["request_payload"], str)
 
 

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Callable
 
-from planner_to_unit4.infrastructure.planning_service import PlanningService
+from planner_to_unit4.infrastructure.planning_service import (
+    ParsedLogItem,
+    PlanningService,
+    SegmentSubmissionResult,
+)
 from planner_to_unit4.infrastructure.soap_envelope_builder import (
     build_postback_items,
     build_soap_envelope,
@@ -10,8 +14,9 @@ from planner_to_unit4.infrastructure.soap_envelope_builder import (
 )
 from planner_to_unit4.infrastructure.soap_http_client import HttpPost
 from planner_to_unit4.infrastructure.soap_response_parser import (
-    parse_object_postback_response,
-    parse_postback_fault_message,
+    PostbackLogItem,
+    parse_object_postback_response_canonical,
+    parse_postback_fault_canonical,
 )
 
 
@@ -37,7 +42,7 @@ class SoapPlanningService(PlanningService):
         self.http_post = http_post
         self.log_fn = log_fn
 
-    def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
+    def send_segment(self, segment: list[dict]) -> SegmentSubmissionResult:
         items = build_postback_items(segment)
         envelope = build_soap_envelope(
             items=items,
@@ -67,30 +72,41 @@ class SoapPlanningService(PlanningService):
             raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
 
         if response.status_code != 200:
-            parsed_message = parse_postback_fault_message(response.text)
-            message = parsed_message or _truncate_message(response.text)
+            parsed_fault = parse_postback_fault_canonical(response.text)
+            message = (
+                parsed_fault.message
+                if parsed_fault is not None
+                else _truncate_message(response.text)
+            )
             self.log_fn(f"SOAP response: http_status={response.status_code} message={message}")
             return {
                 "order_no": None,
                 "http_status": response.status_code,
                 "message": message,
                 "request_payload": soap_payload,
+                "fault_code": None if parsed_fault is None else parsed_fault.fault_code,
+                "fault_string": None if parsed_fault is None else parsed_fault.fault_string,
+                "log_items": []
+                if parsed_fault is None
+                else _serialize_log_items(parsed_fault.log_items),
             }
 
         try:
-            parsed = parse_object_postback_response(response.text)
+            parsed = parse_object_postback_response_canonical(response.text)
         except Exception as exc:  # noqa: BLE001 - parser failure
             raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
         self.log_fn(
             "SOAP response: "
-            f"http_status={response.status_code} order_no={parsed.get('order_no')} "
-            f"message={parsed.get('message')}"
+            f"http_status={response.status_code} order_no={parsed.order_no} "
+            f"message={parsed.message}"
         )
         return {
-            "order_no": parsed.get("order_no"),
+            "order_no": parsed.order_no,
             "http_status": response.status_code,
-            "message": parsed.get("message"),
+            "message": parsed.message,
             "request_payload": soap_payload,
+            "status_message": parsed.status_message,
+            "log_items": _serialize_log_items(parsed.log_items),
         }
 
 
@@ -109,3 +125,14 @@ def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
     if limit <= len(suffix):
         return suffix[:limit]
     return f"{message[: limit - len(suffix)]}{suffix}"
+
+
+def _serialize_log_items(log_items: list[PostbackLogItem]) -> list[ParsedLogItem]:
+    return [
+        {
+            "row": item.row,
+            "column": item.column,
+            "message": item.message,
+        }
+        for item in log_items
+    ]

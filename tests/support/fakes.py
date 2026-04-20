@@ -1,8 +1,10 @@
 from datetime import datetime
 
+from planner_to_unit4.infrastructure.planning_service import SegmentSubmissionResult
+
 
 class FakePlanningService:
-    def __init__(self, response: dict[str, str | int | None] | None = None) -> None:
+    def __init__(self, response: SegmentSubmissionResult | None = None) -> None:
         self.segments: list[list[dict]] = []
         self.response = response or {
             "order_no": "fake-order",
@@ -10,7 +12,7 @@ class FakePlanningService:
             "message": None,
         }
 
-    def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
+    def send_segment(self, segment: list[dict]) -> SegmentSubmissionResult:
         self.segments.append(segment)
         return dict(self.response)
 
