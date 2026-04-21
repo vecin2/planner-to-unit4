@@ -177,6 +177,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     snapshot_path = "snapshot-789"
     submitted_at = datetime(2026, 4, 12, 13, 45, 0)
     failure_message = "Row 2 col dim_3: B102397 is not a legal RESNO"
+    normalized_failure_message = "Validation errors returned in postback log items."
     planning_service = FakePlanningService(
         response={
             "order_no": None,
@@ -206,7 +207,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
         segment_sizes=[1],
         submitted_at=submitted_at,
         http_status=200,
-        message=failure_message,
+        message=normalized_failure_message,
     )
 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
@@ -219,6 +220,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     assert "pipeline_run_id=fabric-run-789" in summary
     assert "failed_segments=1" in summary
     assert "segment=1 records=1 range=1-1 status=Failed http_status=200" in summary
+    assert f"message={normalized_failure_message}" in summary
     assert "column=dim_3 message=B102397 is not a legal RESNO affected_records=1" in summary
 
     runner.assert_segments_failed(expected_failures)

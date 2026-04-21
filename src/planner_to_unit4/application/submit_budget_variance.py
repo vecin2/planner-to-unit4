@@ -21,6 +21,7 @@ from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 
 
 RunStatus = Literal["COMPLETED", "FAILED"]
+LOG_ITEMS_FAILURE_MESSAGE = "Validation errors returned in postback log items."
 
 
 @dataclass(frozen=True)
@@ -146,13 +147,18 @@ class SubmitBudgetVariance:
             message = _as_optional_str(result.get("message"))
 
             if order_no is None:
+                log_items = _extract_log_items(result.get("log_items"))
+                normalized_message = _normalize_failed_segment_message(
+                    message=message,
+                    log_items=log_items,
+                )
                 self.segment_monitor.record_failed(
                     pipeline_run_id=pipeline_run_id,
                     snapshot_path=snapshot_path,
                     segment_index=segment_index,
                     segment_size=len(segment),
                     http_status=http_status,
-                    message=message,
+                    message=normalized_message,
                     submitted_at_utc=self.clock(),
                 )
                 self.log_fn(
@@ -161,8 +167,8 @@ class SubmitBudgetVariance:
                 report_builder.mark_failed(
                     segment_index=segment_index,
                     http_status=http_status,
-                    message=message,
-                    log_items=_extract_log_items(result.get("log_items")),
+                    message=normalized_message,
+                    log_items=log_items,
                 )
                 self._save_failed_request_payload(
                     snapshot_path=snapshot_path,
@@ -350,3 +356,13 @@ def _as_optional_str(value: object) -> str | None:
     if isinstance(value, str):
         return value
     return None
+
+
+def _normalize_failed_segment_message(
+    *,
+    message: str | None,
+    log_items: list[PostbackLogItem],
+) -> str | None:
+    if log_items:
+        return LOG_ITEMS_FAILURE_MESSAGE
+    return message

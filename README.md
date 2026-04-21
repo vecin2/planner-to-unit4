@@ -21,7 +21,8 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 
 ## Failure and Retention Behavior
 
-- Submitter failures bubble as a single summarized exception message. The message includes up to 5 failed segments and is capped at 4000 characters.
+- Submitter `run(...)` always returns a standardized outcome with `status` (`COMPLETED` or `FAILED`).
+- On failure, the outcome includes `to_payload()` fields for pipeline handoff, including `email_subject`, `email_html_body`, `email_text_body`, and segment counts.
 - When `failed_request_fs` is provided, failed SOAP request payloads are written under the snapshot day folder in `failed_requests/`.
 - Retention cleanup for monitor/archive logs warnings and continues processing if cleanup fails.
 
@@ -89,6 +90,8 @@ Runtime arguments (not in config):
 ### Submitter
 
 ```python
+import json
+
 from planner_to_unit4 import create_budget_variance_submitter
 
 submitter = create_budget_variance_submitter(
@@ -109,7 +112,46 @@ submitter = create_budget_variance_submitter(
 outcome = submitter.run(pipeline_run_id="run-123", snapshot_path="Files/.../plan_data.json")
 print(outcome.status)
 # For notebook->pipeline handoff:
-# notebookutils.notebook.exit(json.dumps(outcome.to_payload()))
+notebookutils.notebook.exit(json.dumps(outcome.to_payload()))
+```
+
+### Fabric Notebook -> Pipeline Exit Payload
+
+```python
+import json
+
+from planner_to_unit4 import create_budget_variance_submitter
+
+submitter = create_budget_variance_submitter(
+    spark=spark,
+    config={
+        "source_table_name": "Workday_Ingestion.fpa.Budget_Variance",
+        "version": "ADJ",
+        "batch": "WKD",
+        "endpoint": "https://.../service.svc",
+        "username": "...",
+        "client": "bi",
+        "password": "...",
+        "segment_monitoring_table": "Workday_Ingestion.fpa.segment_monitoring",
+        "max_segment_size": 15000,
+        "timeout": 60,
+    },
+    log_fn=print,
+    failed_request_fs=notebookutils.fs,
+)
+
+outcome = submitter.run(
+    pipeline_run_id="run-123",
+    snapshot_path=json_file_archive_path,
+)
+
+payload = outcome.to_payload()
+print("Submission status:", payload["status"])
+
+# Pipeline consumes this JSON string.
+# If payload["should_send_email"] is true, use payload["email_subject"] and
+# payload["email_html_body"] in the Outlook Send Email activity.
+notebookutils.notebook.exit(json.dumps(payload))
 ```
 
 ### Archiver
