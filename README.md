@@ -106,7 +106,10 @@ submitter = create_budget_variance_submitter(
     log_fn=print,
 )
 
-submitter.run(pipeline_run_id="run-123", snapshot_path="Files/.../plan_data.json")
+outcome = submitter.run(pipeline_run_id="run-123", snapshot_path="Files/.../plan_data.json")
+print(outcome.status)
+# For notebook->pipeline handoff:
+# notebookutils.notebook.exit(json.dumps(outcome.to_payload()))
 ```
 
 ### Archiver

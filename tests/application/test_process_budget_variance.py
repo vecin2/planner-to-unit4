@@ -1,7 +1,5 @@
 from datetime import datetime
 
-import pytest
-
 from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmissionError
 from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 from tests.support.application_runner import ApplicationRunner
@@ -77,7 +75,11 @@ def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None
         submitted_at=submitted_at,
     )
 
-    runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+    assert outcome.status == "COMPLETED"
+    assert outcome.should_send_email is False
+    assert outcome.failed_segments == 0
+    assert outcome.email_html_body == ""
     runner.assert_segments_sent(expected_segments)
     runner.assert_segments_submitted(expected_submissions)
 
@@ -116,9 +118,51 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
         submitted_at=submitted_at,
     )
 
-    runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+    assert outcome.status == "COMPLETED"
+    assert outcome.should_send_email is False
     runner.assert_segments_sent(expected_segments)
     runner.assert_segments_submitted(expected_submissions)
+
+
+def test_process_budget_variance_payload_has_stable_keys_for_success_and_failure() -> None:
+    success_runner = ApplicationRunner.build(
+        rows=[make_row(record_no=1, description="Row1", amount=10)],
+        version="ADJ",
+        batch="WKD",
+        max_segment_size=1,
+        submitted_at=datetime(2026, 4, 12, 12, 45, 0),
+    )
+    success_outcome = success_runner.run_process_budget_variance(
+        "fabric-run-success",
+        "snapshot-success",
+    )
+
+    failure_runner = ApplicationRunner.build(
+        rows=[make_row(record_no=1, description="Row1", amount=10)],
+        version="ADJ",
+        batch="WKD",
+        max_segment_size=1,
+        submitted_at=datetime(2026, 4, 12, 12, 46, 0),
+        planning_service=FakePlanningService(
+            response={
+                "order_no": None,
+                "http_status": 400,
+                "message": "bad row",
+            }
+        ),
+    )
+    failure_outcome = failure_runner.run_process_budget_variance(
+        "fabric-run-failure",
+        "snapshot-failure",
+    )
+
+    success_payload = success_outcome.to_payload()
+    failure_payload = failure_outcome.to_payload()
+
+    assert set(success_payload) == set(failure_payload)
+    assert success_payload["status"] == "COMPLETED"
+    assert failure_payload["status"] == "FAILED"
 
 
 def test_process_budget_variance_records_failed_segment_when_log_items_present() -> None:
@@ -165,10 +209,13 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
         message=failure_message,
     )
 
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
-    summary = str(excinfo.value)
+    assert outcome.status == "FAILED"
+    assert outcome.should_send_email is True
+    assert "<html>" in outcome.email_html_body
+    assert "Planner Upload Result - Failed" in outcome.email_subject
+    summary = outcome.failure_summary_text
     assert "pipeline_run_id=fabric-run-789" in summary
     assert "failed_segments=1" in summary
     assert "segment=1 records=1 range=1-1 status=Failed http_status=200" in summary
@@ -214,10 +261,11 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
         message=failure_message,
     )
 
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
-    summary = str(excinfo.value)
+    assert outcome.status == "FAILED"
+    assert outcome.should_send_email is True
+    summary = outcome.failure_summary_text
     assert "pipeline_run_id=fabric-run-987" in summary
     assert "failed_segments=1" in summary
     assert "segment=1 records=1 range=1-1 status=Failed http_status=500" in summary
@@ -262,12 +310,12 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
         message="network timeout",
     )
 
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
-    assert isinstance(excinfo.value.__cause__, SoapSubmissionError)
-    assert str(excinfo.value.__cause__) == "network timeout"
-    summary = str(excinfo.value)
+    assert outcome.status == "FAILED"
+    assert outcome.error_type == "SoapSubmissionError"
+    assert outcome.error_message == "network timeout"
+    summary = outcome.failure_summary_text
     assert "pipeline_run_id=fabric-run-654" in summary
     assert "failed_segments=1" in summary
     assert "segment=1 records=1 range=1-1 status=Failed message=network timeout" in summary
@@ -300,10 +348,10 @@ def test_process_budget_variance_marks_remaining_segments_as_skipped_on_exceptio
         planning_service=RaisingPlanningService(),
     )
 
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
-    summary = str(excinfo.value)
+    assert outcome.status == "FAILED"
+    summary = outcome.failure_summary_text
     assert "failed_segments=1" in summary
     assert "skipped_segments=2" in summary
     assert "segment=2 records=1 range=2-2 status=Skipped" in summary
@@ -335,10 +383,10 @@ def test_process_budget_variance_failure_summary_includes_all_failed_segments() 
         planning_service=planning_service,
     )
 
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
-    summary = str(excinfo.value)
+    assert outcome.status == "FAILED"
+    summary = outcome.failure_summary_text
     assert "failed_segments=6" in summary
     assert "segment=1" in summary
     assert "segment=6" in summary
@@ -371,10 +419,10 @@ def test_process_budget_variance_failure_summary_does_not_truncate_message() -> 
         planning_service=planning_service,
     )
 
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
-    summary = str(excinfo.value)
+    assert outcome.status == "FAILED"
+    summary = outcome.failure_summary_text
     assert "x" * 5000 in summary
     assert "(truncated)" not in summary
 
@@ -479,8 +527,9 @@ def test_process_budget_variance_saves_failed_request_payload_for_failed_segment
         failed_request_fs=failed_request_fs,
     )
 
-    with pytest.raises(RuntimeError):
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert outcome.status == "FAILED"
 
     assert failed_request_fs.mkdirs_calls == [
         "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/failed_requests"
@@ -517,8 +566,9 @@ def test_process_budget_variance_saves_failed_request_payload_on_exception() -> 
         failed_request_fs=failed_request_fs,
     )
 
-    with pytest.raises(RuntimeError):
-        runner.run_process_budget_variance(run_id, snapshot_path)
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert outcome.status == "FAILED"
 
     assert failed_request_fs.mkdirs_calls == [
         "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/failed_requests"

@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
+from typing import Literal
 from typing import Protocol
 
+from planner_to_unit4.application.failure_notification_renderer import render_failure_notification
 from planner_to_unit4.application.submission_failure_report import (
+    SubmissionFailureReport,
     SubmissionFailureReportBuilder,
-    format_failure_report,
 )
 from planner_to_unit4.infrastructure.budget_variance_items_provider import (
     BudgetVarianceItemsProvider,
@@ -18,11 +20,41 @@ from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmission
 from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 
 
+RunStatus = Literal["COMPLETED", "FAILED"]
+
+
 @dataclass(frozen=True)
-class ProcessBudgetVarianceResult:
+class SubmissionRunOutcome:
     pipeline_run_id: str
-    status: str
     snapshot_path: str
+    status: RunStatus
+    should_send_email: bool
+    email_subject: str
+    email_html_body: str
+    email_text_body: str
+    failed_segments: int
+    skipped_segments: int
+    total_segments: int
+    failure_summary_text: str
+    error_type: str
+    error_message: str
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "pipeline_run_id": self.pipeline_run_id,
+            "snapshot_path": self.snapshot_path,
+            "should_send_email": self.should_send_email,
+            "email_subject": self.email_subject,
+            "email_html_body": self.email_html_body,
+            "email_text_body": self.email_text_body,
+            "failed_segments": self.failed_segments,
+            "skipped_segments": self.skipped_segments,
+            "total_segments": self.total_segments,
+            "failure_summary_text": self.failure_summary_text,
+            "error_type": self.error_type,
+            "error_message": self.error_message,
+        }
 
 
 class FailedRequestFileSystem(Protocol):
@@ -42,7 +74,7 @@ class SubmitBudgetVariance:
     failed_request_fs: FailedRequestFileSystem | None = None
     clock: Callable[[], datetime] = datetime.utcnow
 
-    def run(self, pipeline_run_id: str, snapshot_path: str) -> ProcessBudgetVarianceResult:
+    def run(self, pipeline_run_id: str, snapshot_path: str) -> SubmissionRunOutcome:
         if self.segment_monitor_retention_days is not None:
             try:
                 self.segment_monitor.apply_retention(
@@ -56,7 +88,6 @@ class SubmitBudgetVariance:
                 )
 
         items = self.items_provider.read_items()
-
         segments = list(_segment_rows(items, self.max_segment_size))
         self.log_fn(
             "Starting budget variance submission: "
@@ -97,15 +128,15 @@ class SubmitBudgetVariance:
                     now_utc=failure_time_utc,
                 )
                 self.log_fn(f"Recorded failed segment: segment_index={segment_index} error={exc}")
-                raise RuntimeError(
-                    format_failure_report(
-                        report_builder.build_failure_report(
-                            pipeline_run_id=pipeline_run_id,
-                        )
-                    )
-                ) from exc
+                return _build_failed_outcome(
+                    pipeline_run_id=pipeline_run_id,
+                    snapshot_path=snapshot_path,
+                    report=report_builder.build_failure_report(pipeline_run_id=pipeline_run_id),
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
 
-            order_no = result.get("order_no")
+            order_no = _as_optional_str(result.get("order_no"))
             self.log_fn(
                 "Segment response: "
                 f"segment_index={segment_index} http_status={result.get('http_status')} "
@@ -113,6 +144,7 @@ class SubmitBudgetVariance:
             )
             http_status = _as_optional_int(result.get("http_status"))
             message = _as_optional_str(result.get("message"))
+
             if order_no is None:
                 self.segment_monitor.record_failed(
                     pipeline_run_id=pipeline_run_id,
@@ -164,18 +196,30 @@ class SubmitBudgetVariance:
             "Completed budget variance submission: "
             f"pipeline_run_id={pipeline_run_id} snapshot_path={snapshot_path}"
         )
+
         if report_builder.has_failures():
-            raise RuntimeError(
-                format_failure_report(
-                    report_builder.build_failure_report(
-                        pipeline_run_id=pipeline_run_id,
-                    )
-                )
+            return _build_failed_outcome(
+                pipeline_run_id=pipeline_run_id,
+                snapshot_path=snapshot_path,
+                report=report_builder.build_failure_report(pipeline_run_id=pipeline_run_id),
+                error_type="SEGMENT_FAILURE",
+                error_message="One or more segments failed",
             )
-        return ProcessBudgetVarianceResult(
+
+        return SubmissionRunOutcome(
             pipeline_run_id=pipeline_run_id,
-            status="COMPLETED",
             snapshot_path=snapshot_path,
+            status="COMPLETED",
+            should_send_email=False,
+            email_subject="",
+            email_html_body="",
+            email_text_body="",
+            failed_segments=0,
+            skipped_segments=0,
+            total_segments=len(segments),
+            failure_summary_text="",
+            error_type="",
+            error_message="",
         )
 
     def _save_failed_request_payload(
@@ -210,6 +254,35 @@ class SubmitBudgetVariance:
             self.log_fn(
                 f"Failed request payload warning: segment_index={segment_index} error={exc}"
             )
+
+
+def _build_failed_outcome(
+    *,
+    pipeline_run_id: str,
+    snapshot_path: str,
+    report: SubmissionFailureReport,
+    error_type: str,
+    error_message: str,
+) -> SubmissionRunOutcome:
+    notification = render_failure_notification(
+        report=report,
+        snapshot_path=snapshot_path,
+    )
+    return SubmissionRunOutcome(
+        pipeline_run_id=pipeline_run_id,
+        snapshot_path=snapshot_path,
+        status="FAILED",
+        should_send_email=True,
+        email_subject=notification.subject,
+        email_html_body=notification.html_body,
+        email_text_body=notification.text_body,
+        failed_segments=report.failed_segments,
+        skipped_segments=report.skipped_segments,
+        total_segments=report.total_segments,
+        failure_summary_text=notification.text_body,
+        error_type=error_type,
+        error_message=error_message,
+    )
 
 
 def _segment_rows(rows: list, segment_size: int):

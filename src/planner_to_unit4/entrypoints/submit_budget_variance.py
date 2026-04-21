@@ -44,6 +44,10 @@ def main(
 ) -> SubmitBudgetVariance:
     """Create a configured budget-variance submitter.
 
+    The submitter `run(...)` method returns a standardized outcome object with
+    `status` (`COMPLETED` or `FAILED`) and a `to_payload()` method for
+    notebook-to-pipeline handoff.
+
     Runtime arguments (not part of ``config``):
     - ``spark``: Spark session used for table reads and monitor writes.
     - ``log_fn``: callable used to emit operational logs.
