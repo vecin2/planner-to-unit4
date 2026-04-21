@@ -26,7 +26,7 @@ POSTBACK_FIELDS_IN_ORDER = [
 
 def build_postback_items(rows: list[dict]) -> list[dict]:
     items = []
-    for idx, row in enumerate(rows, start=1):
+    for row in rows:
         item = {
             "Client": safe_str(row.get("Client")),
             "Description": safe_str(row.get("Description")),
@@ -41,7 +41,7 @@ def build_postback_items(rows: list[dict]) -> list[dict]:
             "PeriodTo": safe_str(row.get("Period")),
             "CurAmount": safe_str(row.get("CurAmount")),
         }
-        item["TransactionId"] = -idx
+        item["TransactionId"] = _transaction_id_from_record_no(row)
         item["TransactionSetup"] = _transaction_setup(item["Client"])
         item["Version"] = safe_str(row.get("Version"))
         item["Batch"] = safe_str(row.get("Batch"))
@@ -96,6 +96,32 @@ def _transaction_setup(client: str) -> str:
     if client == "BI":
         return "STD"
     return "GLBUDGET"
+
+
+def _transaction_id_from_record_no(row: dict) -> int:
+    raw_record_no = row.get("record_no")
+    if raw_record_no is None:
+        raise ValueError("record_no is required to derive TransactionId")
+
+    if isinstance(raw_record_no, bool):
+        raise ValueError("record_no must be a positive integer to derive TransactionId")
+
+    if isinstance(raw_record_no, int):
+        record_no = raw_record_no
+    elif isinstance(raw_record_no, str):
+        try:
+            record_no = int(raw_record_no.strip())
+        except ValueError as exc:
+            raise ValueError(
+                "record_no must be a positive integer to derive TransactionId"
+            ) from exc
+    else:
+        raise ValueError("record_no must be a positive integer to derive TransactionId")
+
+    if record_no <= 0:
+        raise ValueError("record_no must be a positive integer to derive TransactionId")
+
+    return -record_no
 
 
 def _build_postback_item_xml(parent_postback_items: Element, item_dict: dict) -> Element:

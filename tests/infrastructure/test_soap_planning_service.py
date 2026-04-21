@@ -52,6 +52,7 @@ def test_send_segment_returns_order_no_on_success() -> None:
     result = service.send_segment(
         [
             {
+                "record_no": 1,
                 "Client": "BI",
                 "Description": "Test",
                 "Account": "1000",
@@ -105,7 +106,7 @@ def test_send_segment_returns_faultstring_on_non_200() -> None:
         log_fn=lambda _message: None,
     )
 
-    result = service.send_segment([{"Client": "BI"}])
+    result = service.send_segment([{"record_no": 1, "Client": "BI"}])
 
     assert result["order_no"] is None
     assert result["http_status"] == 500
@@ -131,7 +132,7 @@ def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
         log_fn=lambda _message: None,
     )
 
-    result = service.send_segment([{"Client": "BI"}])
+    result = service.send_segment([{"record_no": 1, "Client": "BI"}])
 
     assert result["order_no"] is None
     assert result["http_status"] == 500
@@ -156,6 +157,6 @@ def test_send_segment_raises_submission_error_with_request_payload() -> None:
     )
 
     with pytest.raises(SoapSubmissionError, match="network timeout") as excinfo:
-        service.send_segment([{"Client": "BI"}])
+        service.send_segment([{"record_no": 1, "Client": "BI"}])
 
     assert isinstance(excinfo.value.request_payload, str)
