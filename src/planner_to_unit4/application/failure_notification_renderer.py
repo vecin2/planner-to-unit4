@@ -38,7 +38,7 @@ def _render_failure_html(*, report: SubmissionFailureReport, snapshot_path: str)
             f"<td>{summary.segment_index}</td>"
             f"<td>{summary.record_count}</td>"
             f"<td>{_escape(_format_range(summary.record_no_start, summary.record_no_end))}</td>"
-            f"<td>{_escape(_status_label(summary.status))}</td>"
+            f"<td>{_render_status_badge(summary.status)}</td>"
             f"<td>{_render_error_summary_cell(summary)}</td>"
             "</tr>"
         )
@@ -59,6 +59,10 @@ def _render_failure_html(*, report: SubmissionFailureReport, snapshot_path: str)
         "th,td{border:1px solid #e5e7eb;padding:8px;vertical-align:top;font-size:13px;text-align:left;}"
         "th{background:#f3f4f6;}"
         ".inner th,.inner td{font-size:12px;padding:6px;}"
+        ".status-badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;}"
+        ".status-submitted{background:#e8f7ee;color:#0f5132;border:1px solid #b7e1c2;}"
+        ".status-failed{background:#fbeaea;color:#842029;border:1px solid #f0b5b8;}"
+        ".status-skipped{background:#eef2f7;color:#344054;border:1px solid #d0d7e2;}"
         ".warn{margin-top:8px;padding:8px;background:#fff7df;border:1px solid #f1d48a;color:#8a4b08;border-radius:6px;font-size:12px;}"
         "</style></head><body>"
         "<article class='card'>"
@@ -131,6 +135,16 @@ def _status_label(status: str) -> str:
     if status == "FAILED":
         return "Failed"
     return "Skipped"
+
+
+def _render_status_badge(status: str) -> str:
+    if status == "SUBMITTED":
+        css_class = "status-submitted"
+    elif status == "FAILED":
+        css_class = "status-failed"
+    else:
+        css_class = "status-skipped"
+    return f"<span class='status-badge {css_class}'>{_escape(_status_label(status))}</span>"
 
 
 def _format_row_samples(row_samples: list[int]) -> str:

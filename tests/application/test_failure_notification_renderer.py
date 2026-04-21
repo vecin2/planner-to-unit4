@@ -8,7 +8,9 @@ def _segment(record_start: int, record_end: int) -> list[dict]:
 
 
 def test_render_failure_notification_contains_html_summary() -> None:
-    builder = SubmissionFailureReportBuilder(segments=[_segment(1, 1), _segment(2, 4)])
+    builder = SubmissionFailureReportBuilder(
+        segments=[_segment(1, 1), _segment(2, 4), _segment(5, 5)]
+    )
     builder.mark_submitted(segment_index=1, message="Submitted", http_status=200)
     builder.mark_failed(
         segment_index=2,
@@ -19,6 +21,7 @@ def test_render_failure_notification_contains_html_summary() -> None:
             PostbackLogItem(row=3, column="dim_4", message="B102395 is not a legal BUS"),
         ],
     )
+    builder.mark_skipped_after(failed_segment_index=2)
     report = builder.build_failure_report(pipeline_run_id="run-100")
 
     notification = render_failure_notification(
@@ -31,6 +34,9 @@ def test_render_failure_notification_contains_html_summary() -> None:
     assert "<html>" in notification.html_body
     assert "Segment Summary" in notification.html_body
     assert "B102395 is not a legal BUS" in notification.html_body
+    assert "status-badge status-submitted" in notification.html_body
+    assert "status-badge status-failed" in notification.html_body
+    assert "status-badge status-skipped" in notification.html_body
     assert "pipeline_run_id=run-100" in notification.text_body
 
 
