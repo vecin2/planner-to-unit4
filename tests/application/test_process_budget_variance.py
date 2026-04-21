@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 
 from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmissionError
+from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 from tests.support.application_runner import ApplicationRunner
 from tests.support.fakes import FakePlanningService, FakeSegmentMonitor
 
@@ -137,6 +138,13 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
             "order_no": None,
             "http_status": 200,
             "message": failure_message,
+            "log_items": [
+                PostbackLogItem(
+                    row=2,
+                    column="dim_3",
+                    message="B102397 is not a legal RESNO",
+                )
+            ],
         }
     )
 
@@ -157,16 +165,14 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
         message=failure_message,
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match=(
-            "Budget variance submission failed "
-            "\\(pipeline_run_id=fabric-run-789, failed_segments=1\\): "
-            "\\[segment=1, http_status=200, "
-            "message=Row 2 col dim_3: B102397 is not a legal RESNO\\]"
-        ),
-    ):
+    with pytest.raises(RuntimeError) as excinfo:
         runner.run_process_budget_variance(run_id, snapshot_path)
+
+    summary = str(excinfo.value)
+    assert "pipeline_run_id=fabric-run-789" in summary
+    assert "failed_segments=1" in summary
+    assert "segment=1 records=1 range=1-1 status=Failed http_status=200" in summary
+    assert "column=dim_3 message=B102397 is not a legal RESNO affected_records=1" in summary
 
     runner.assert_segments_failed(expected_failures)
 
@@ -208,15 +214,14 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
         message=failure_message,
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match=(
-            "Budget variance submission failed "
-            "\\(pipeline_run_id=fabric-run-987, failed_segments=1\\): "
-            "\\[segment=1, http_status=500, message=Something went wrong\\.\\]"
-        ),
-    ):
+    with pytest.raises(RuntimeError) as excinfo:
         runner.run_process_budget_variance(run_id, snapshot_path)
+
+    summary = str(excinfo.value)
+    assert "pipeline_run_id=fabric-run-987" in summary
+    assert "failed_segments=1" in summary
+    assert "segment=1 records=1 range=1-1 status=Failed http_status=500" in summary
+    assert "message=Something went wrong." in summary
 
     runner.assert_segments_failed(expected_failures)
 
@@ -257,23 +262,55 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
         message="network timeout",
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match=(
-            "Budget variance submission failed "
-            "\\(pipeline_run_id=fabric-run-654, failed_segments=1\\): "
-            "\\[segment=1, http_status=None, message=network timeout\\]"
-        ),
-    ) as excinfo:
+    with pytest.raises(RuntimeError) as excinfo:
         runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert isinstance(excinfo.value.__cause__, SoapSubmissionError)
     assert str(excinfo.value.__cause__) == "network timeout"
+    summary = str(excinfo.value)
+    assert "pipeline_run_id=fabric-run-654" in summary
+    assert "failed_segments=1" in summary
+    assert "segment=1 records=1 range=1-1 status=Failed message=network timeout" in summary
 
     runner.assert_segments_failed(expected_failures)
 
 
-def test_process_budget_variance_failure_summary_caps_segments_to_five() -> None:
+def test_process_budget_variance_marks_remaining_segments_as_skipped_on_exception() -> None:
+    rows = [make_row(record_no=i, description=f"Row{i}", amount=i) for i in range(1, 4)]
+
+    run_id = "fabric-run-655"
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-655"
+    submitted_at = datetime(2026, 4, 12, 15, 0, 0)
+
+    class RaisingPlanningService:
+        def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
+            raise SoapSubmissionError(
+                "network timeout",
+                request_payload="<request>payload</request>",
+            )
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=RaisingPlanningService(),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        runner.run_process_budget_variance(run_id, snapshot_path)
+
+    summary = str(excinfo.value)
+    assert "failed_segments=1" in summary
+    assert "skipped_segments=2" in summary
+    assert "segment=2 records=1 range=2-2 status=Skipped" in summary
+    assert "segment=3 records=1 range=3-3 status=Skipped" in summary
+
+
+def test_process_budget_variance_failure_summary_includes_all_failed_segments() -> None:
     rows = [make_row(record_no=i, description=f"Row{i}", amount=i) for i in range(1, 7)]
 
     run_id = "fabric-run-555"
@@ -304,12 +341,12 @@ def test_process_budget_variance_failure_summary_caps_segments_to_five() -> None
     summary = str(excinfo.value)
     assert "failed_segments=6" in summary
     assert "segment=1" in summary
+    assert "segment=6" in summary
     assert "segment=5" in summary
-    assert "segment=6" not in summary
-    assert "... +1 more" in summary
+    assert "... +1 more" not in summary
 
 
-def test_process_budget_variance_failure_summary_caps_message_to_4000_chars() -> None:
+def test_process_budget_variance_failure_summary_does_not_truncate_message() -> None:
     row1 = make_row(record_no=1, description="Row1", amount=10)
 
     run_id = "fabric-run-556"
@@ -338,8 +375,8 @@ def test_process_budget_variance_failure_summary_caps_message_to_4000_chars() ->
         runner.run_process_budget_variance(run_id, snapshot_path)
 
     summary = str(excinfo.value)
-    assert len(summary) == 4000
-    assert summary.endswith("... (truncated)")
+    assert "x" * 5000 in summary
+    assert "(truncated)" not in summary
 
 
 def test_process_budget_variance_applies_retention_when_configured() -> None:
