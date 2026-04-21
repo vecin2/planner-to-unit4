@@ -76,19 +76,6 @@ class SoapPlanningService(PlanningService):
         except Exception as exc:  # noqa: BLE001 - parser failure
             raise SoapSubmissionError(str(exc), request_payload=soap_payload) from exc
 
-        if parsed is None:
-            message = _truncate_message(response.text)
-            self.log_fn(f"SOAP response: http_status={response.status_code} message={message}")
-            return {
-                "order_no": None,
-                "http_status": response.status_code,
-                "message": message,
-                "request_payload": soap_payload,
-                "fault_code": None,
-                "fault_string": None,
-                "log_items": [],
-            }
-
         self.log_fn(
             "SOAP response: "
             f"http_status={response.status_code} order_no={parsed.order_no} "
@@ -110,14 +97,3 @@ class SoapSubmissionError(RuntimeError):
     def __init__(self, message: str, request_payload: str) -> None:
         super().__init__(message)
         self.request_payload = request_payload
-
-
-def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
-    if message is None:
-        return None
-    if len(message) <= limit:
-        return message
-    suffix = "... (truncated)"
-    if limit <= len(suffix):
-        return suffix[:limit]
-    return f"{message[: limit - len(suffix)]}{suffix}"

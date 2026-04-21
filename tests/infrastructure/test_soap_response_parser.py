@@ -224,8 +224,15 @@ def test_parse_segment_submission_response_for_non_200_status() -> None:
     ]
 
 
-def test_parse_segment_submission_response_non_200_returns_none_for_invalid_xml() -> None:
-    assert parse_segment_submission_response("not xml", http_status=500) is None
+def test_parse_segment_submission_response_non_200_falls_back_for_invalid_xml() -> None:
+    parsed = parse_segment_submission_response("not xml", http_status=500)
+
+    assert parsed.order_no is None
+    assert parsed.status_message is None
+    assert parsed.fault_code is None
+    assert parsed.fault_string is None
+    assert parsed.log_items == []
+    assert parsed.message == "not xml"
 
 
 def test_parse_object_postback_response_canonical_raises_on_invalid_xml() -> None:

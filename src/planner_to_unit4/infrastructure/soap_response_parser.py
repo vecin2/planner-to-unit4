@@ -41,7 +41,7 @@ def parse_segment_submission_response(
     xml_text: str,
     *,
     http_status: int,
-) -> ParsedSegmentSubmissionResponse | None:
+) -> ParsedSegmentSubmissionResponse:
     if http_status == 200:
         parsed = parse_object_postback_response_canonical(xml_text)
         return ParsedSegmentSubmissionResponse(
@@ -55,7 +55,14 @@ def parse_segment_submission_response(
 
     parsed_fault = parse_postback_fault_canonical(xml_text)
     if parsed_fault is None:
-        return None
+        return ParsedSegmentSubmissionResponse(
+            order_no=None,
+            status_message=None,
+            fault_code=None,
+            fault_string=None,
+            log_items=[],
+            message=_truncate_message(xml_text),
+        )
     return ParsedSegmentSubmissionResponse(
         order_no=None,
         status_message=None,
@@ -186,3 +193,14 @@ def _parse_optional_int(value: str | None) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _truncate_message(message: str | None, limit: int = 4000) -> str | None:
+    if message is None:
+        return None
+    if len(message) <= limit:
+        return message
+    suffix = "... (truncated)"
+    if limit <= len(suffix):
+        return suffix[:limit]
+    return f"{message[: limit - len(suffix)]}{suffix}"
