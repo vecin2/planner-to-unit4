@@ -16,13 +16,15 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 
 ### File Archiver
 - moves one source file into a unique archive path under `yyyy=/mm=/dd=` partitions
-- returns archive result with source and destination paths
+- returns a standardized outcome with `status` (`COMPLETED` or `FAILED`) and `to_payload()`
 - applies optional archive retention cleanup
 
 ## Failure and Retention Behavior
 
 - Submitter `run(...)` always returns a standardized outcome with `status` (`COMPLETED` or `FAILED`).
 - On failure, the outcome includes `to_payload()` fields for pipeline handoff, including `email_subject`, `email_html_body`, `email_text_body`, and segment counts.
+- Archiver `run(...)` also returns a standardized outcome with `status` (`COMPLETED` or `FAILED`) and `to_payload()` for notebook exit payloads.
+- On archive failure, `email_html_body` contains the exception details so it can be used directly in email activities.
 - When `failed_request_fs` is provided, failed SOAP request payloads are written under the snapshot day folder in `failed_requests/`.
 - Retention cleanup for monitor/archive logs warnings and continues processing if cleanup fails.
 
@@ -157,6 +159,8 @@ notebookutils.notebook.exit(json.dumps(payload))
 ### Archiver
 
 ```python
+import json
+
 from planner_to_unit4 import create_file_archiver
 
 archiver = create_file_archiver(
@@ -169,5 +173,10 @@ archiver = create_file_archiver(
 )
 
 result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
-print(result.archived_path)
+payload = result.to_payload()
+print(payload["status"])
+print(payload["archived_path"])
+
+# Pipeline consumes this JSON string.
+notebookutils.notebook.exit(json.dumps(payload))
 ```
