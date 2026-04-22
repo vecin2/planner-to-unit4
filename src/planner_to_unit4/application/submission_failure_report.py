@@ -38,6 +38,7 @@ class SubmissionFailureReport:
     total_segments: int
     failed_segments: int
     skipped_segments: int
+    row_sample_limit: int
     summaries: list[SegmentFailureSummary]
 
 
@@ -123,6 +124,7 @@ class SubmissionFailureReportBuilder:
             total_segments=len(summaries),
             failed_segments=failed_segments,
             skipped_segments=skipped_segments,
+            row_sample_limit=self.row_sample_limit,
             summaries=summaries,
         )
 

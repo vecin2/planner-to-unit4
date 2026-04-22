@@ -219,7 +219,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     assert outcome.is_success() is False
     assert outcome.is_failed() is True
     assert outcome.should_send_email is True
-    assert "<html>" in outcome.email_html_body
+    assert "<html lang='en'>" in outcome.email_html_body
     assert "Planner Upload Result - Failed" in outcome.email_subject
     summary = outcome.failure_summary_text
     assert "pipeline_run_id=fabric-run-789" in summary

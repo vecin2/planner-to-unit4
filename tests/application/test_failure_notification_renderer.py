@@ -9,7 +9,8 @@ def _segment(record_start: int, record_end: int) -> list[dict]:
 
 def test_render_failure_notification_contains_html_summary() -> None:
     builder = SubmissionFailureReportBuilder(
-        segments=[_segment(1, 1), _segment(2, 4), _segment(5, 5)]
+        segments=[_segment(1, 1), _segment(2, 4), _segment(5, 5)],
+        row_sample_limit=7,
     )
     builder.mark_submitted(segment_index=1, message="Submitted", http_status=200)
     builder.mark_failed(
@@ -41,9 +42,14 @@ def test_render_failure_notification_contains_html_summary() -> None:
 
     assert "Planner Upload Result - Failed" in notification.subject
     assert "run-100" in notification.subject
-    assert "<html>" in notification.html_body
-    assert "Segment Summary" in notification.html_body
+    assert "<html lang='en'>" in notification.html_body
+    assert "Planner Upload Result" in notification.html_body
+    assert "Archived File:" in notification.html_body
+    assert "Files/FPA/archive/plan_data.json" in notification.html_body
     assert "B102395 is not a legal BUS" in notification.html_body
+    assert "Error:" in notification.html_body
+    assert "Sample failed rows (showing up to 7)" in notification.html_body
+    assert "record_no" in notification.html_body
     assert "status-badge status-submitted" in notification.html_body
     assert "status-badge status-failed" in notification.html_body
     assert "status-badge status-skipped" in notification.html_body
@@ -72,5 +78,5 @@ def test_render_failure_notification_escapes_html_in_messages() -> None:
         snapshot_path="Files/FPA/archive/plan_data.json",
     )
 
-    assert "bad &lt;value&gt;" in notification.html_body
     assert "bad &quot;tag&quot; &lt;x&gt;" in notification.html_body
+    assert 'bad "tag" <x>' not in notification.html_body
