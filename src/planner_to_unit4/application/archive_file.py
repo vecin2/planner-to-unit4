@@ -26,6 +26,12 @@ class ArchiveFileResult:
     email_html_body: str
     error_message: str
 
+    def is_success(self) -> bool:
+        return self.status == "COMPLETED"
+
+    def is_failed(self) -> bool:
+        return self.status == "FAILED"
+
     def to_payload(self) -> dict[str, object]:
         return {
             "status": self.status,

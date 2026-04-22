@@ -15,9 +15,9 @@ from planner_to_unit4.infrastructure.budget_variance_items_provider import (
     BudgetVarianceItemsProvider,
 )
 from planner_to_unit4.infrastructure.planning_service import PlanningService
+from planner_to_unit4.infrastructure.planning_service import ResolvedPostbackError
 from planner_to_unit4.infrastructure.segment_monitor import SegmentMonitor
 from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmissionError
-from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 
 
 RunStatus = Literal["COMPLETED", "FAILED"]
@@ -39,6 +39,12 @@ class SubmissionRunOutcome:
     failure_summary_text: str
     error_type: str
     error_message: str
+
+    def is_success(self) -> bool:
+        return self.status == "COMPLETED"
+
+    def is_failed(self) -> bool:
+        return self.status == "FAILED"
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -108,7 +114,8 @@ class SubmitBudgetVariance:
                     segment_index=segment_index,
                     http_status=None,
                     message=str(exc),
-                    log_items=[],
+                    resolved_errors=[],
+                    has_partial_errors_notice=False,
                 )
                 report_builder.mark_skipped_after(failed_segment_index=segment_index)
                 self.segment_monitor.record_failed(
@@ -147,10 +154,12 @@ class SubmitBudgetVariance:
             message = _as_optional_str(result.get("message"))
 
             if order_no is None:
-                log_items = _extract_log_items(result.get("log_items"))
+                resolved_errors = _extract_resolved_errors(result.get("resolved_errors"))
+                has_partial_errors_notice = _as_bool(result.get("has_partial_errors_notice"))
                 normalized_message = _normalize_failed_segment_message(
                     message=message,
-                    log_items=log_items,
+                    resolved_errors=resolved_errors,
+                    has_partial_errors_notice=has_partial_errors_notice,
                 )
                 self.segment_monitor.record_failed(
                     pipeline_run_id=pipeline_run_id,
@@ -168,7 +177,8 @@ class SubmitBudgetVariance:
                     segment_index=segment_index,
                     http_status=http_status,
                     message=normalized_message,
-                    log_items=log_items,
+                    resolved_errors=resolved_errors,
+                    has_partial_errors_notice=has_partial_errors_notice,
                 )
                 self._save_failed_request_payload(
                     snapshot_path=snapshot_path,
@@ -320,22 +330,30 @@ def _build_failed_request_file_name(
     return f"{timestamp}_{pipeline_run_id}_segment_{segment_index}.xml"
 
 
-def _extract_log_items(raw_log_items: object) -> list[PostbackLogItem]:
-    if not isinstance(raw_log_items, list):
+def _extract_resolved_errors(raw_resolved_errors: object) -> list[ResolvedPostbackError]:
+    if not isinstance(raw_resolved_errors, list):
         return []
 
-    parsed: list[PostbackLogItem] = []
-    for raw in raw_log_items:
-        if isinstance(raw, PostbackLogItem):
+    parsed: list[ResolvedPostbackError] = []
+    for raw in raw_resolved_errors:
+        if isinstance(raw, ResolvedPostbackError):
             parsed.append(raw)
             continue
         if not isinstance(raw, dict):
             continue
+        raw_failed_row = raw.get("failed_row")
+        failed_row: dict[str, object] | None
+        if isinstance(raw_failed_row, dict):
+            failed_row = raw_failed_row
+        else:
+            failed_row = None
         parsed.append(
-            PostbackLogItem(
-                row=_as_optional_int(raw.get("row")),
+            ResolvedPostbackError(
+                row_index_1_based=_as_optional_int(raw.get("row_index_1_based")),
+                transaction_id=_as_optional_int(raw.get("transaction_id")),
                 column=_as_optional_str(raw.get("column")),
                 message=_as_optional_str(raw.get("message")),
+                failed_row=failed_row,
             )
         )
     return parsed
@@ -358,11 +376,16 @@ def _as_optional_str(value: object) -> str | None:
     return None
 
 
+def _as_bool(value: object) -> bool:
+    return isinstance(value, bool) and value
+
+
 def _normalize_failed_segment_message(
     *,
     message: str | None,
-    log_items: list[PostbackLogItem],
+    resolved_errors: list[ResolvedPostbackError],
+    has_partial_errors_notice: bool,
 ) -> str | None:
-    if log_items:
+    if resolved_errors or has_partial_errors_notice:
         return LOG_ITEMS_FAILURE_MESSAGE
     return message

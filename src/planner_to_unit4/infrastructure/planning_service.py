@@ -1,7 +1,15 @@
+from dataclasses import dataclass
 from typing import Protocol
 from typing import TypedDict
 
-from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
+
+@dataclass(frozen=True)
+class ResolvedPostbackError:
+    row_index_1_based: int | None
+    transaction_id: int | None
+    column: str | None
+    message: str | None
+    failed_row: dict[str, object] | None
 
 
 class SegmentSubmissionResult(TypedDict, total=False):
@@ -12,7 +20,8 @@ class SegmentSubmissionResult(TypedDict, total=False):
     status_message: str | None
     fault_code: str | None
     fault_string: str | None
-    log_items: list[PostbackLogItem]
+    resolved_errors: list[ResolvedPostbackError]
+    has_partial_errors_notice: bool
 
 
 class PlanningService(Protocol):

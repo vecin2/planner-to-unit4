@@ -71,6 +71,8 @@ def test_archive_file_moves_to_partitioned_unique_path() -> None:
     assert result.archived_path == expected_archived_path
     assert result.source_path == "Files/FPA_Ingestion_Test/landing/Plan_Data.json"
     assert result.status == "COMPLETED"
+    assert result.is_success() is True
+    assert result.is_failed() is False
     assert result.email_html_body == ""
     assert result.error_message == ""
     assert any("Archived file" in message for message in log_messages)
@@ -131,6 +133,8 @@ def test_archive_file_logs_warning_and_continues_when_retention_fails() -> None:
     result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
 
     assert result.status == "COMPLETED"
+    assert result.is_success() is True
+    assert result.is_failed() is False
     assert len(fs.mv_calls) == 1
     assert any("Archive retention warning" in message for message in messages)
 
@@ -151,6 +155,8 @@ def test_archive_file_returns_failed_outcome_with_email_html_when_move_fails() -
     result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
 
     assert result.status == "FAILED"
+    assert result.is_success() is False
+    assert result.is_failed() is True
     assert result.error_message == "move failure"
     assert "move failure" in result.email_html_body
     assert any("Archive file failed" in message for message in messages)

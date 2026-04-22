@@ -1,6 +1,6 @@
 from planner_to_unit4.application.failure_notification_renderer import render_failure_notification
 from planner_to_unit4.application.submission_failure_report import SubmissionFailureReportBuilder
-from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
+from planner_to_unit4.infrastructure.planning_service import ResolvedPostbackError
 
 
 def _segment(record_start: int, record_end: int) -> list[dict]:
@@ -16,10 +16,23 @@ def test_render_failure_notification_contains_html_summary() -> None:
         segment_index=2,
         http_status=400,
         message="Validation errors",
-        log_items=[
-            PostbackLogItem(row=2, column="dim_4", message="B102395 is not a legal BUS"),
-            PostbackLogItem(row=3, column="dim_4", message="B102395 is not a legal BUS"),
+        resolved_errors=[
+            ResolvedPostbackError(
+                row_index_1_based=1,
+                transaction_id=-2,
+                column="dim_4",
+                message="B102395 is not a legal BUS",
+                failed_row={"record_no": 2},
+            ),
+            ResolvedPostbackError(
+                row_index_1_based=2,
+                transaction_id=-3,
+                column="dim_4",
+                message="B102395 is not a legal BUS",
+                failed_row={"record_no": 3},
+            ),
         ],
+        has_partial_errors_notice=False,
     )
     builder.mark_skipped_after(failed_segment_index=2)
     report = builder.build_failure_report(pipeline_run_id="run-100")
@@ -46,7 +59,16 @@ def test_render_failure_notification_escapes_html_in_messages() -> None:
         segment_index=1,
         http_status=400,
         message="bad <value>",
-        log_items=[PostbackLogItem(row=1, column="dim_4", message='bad "tag" <x>')],
+        resolved_errors=[
+            ResolvedPostbackError(
+                row_index_1_based=1,
+                transaction_id=-1,
+                column="dim_4",
+                message='bad "tag" <x>',
+                failed_row={"record_no": 1},
+            )
+        ],
+        has_partial_errors_notice=False,
     )
     report = builder.build_failure_report(pipeline_run_id="run-101")
 

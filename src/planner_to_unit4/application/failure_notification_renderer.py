@@ -104,13 +104,13 @@ def _render_error_summary_cell(summary: SegmentFailureSummary) -> str:
             f"<td>{_escape(group.column or '?')}</td>"
             f"<td>{_escape(group.message or '?')}</td>"
             f"<td>{group.affected_records}</td>"
-            f"<td>{_escape(_format_row_samples(group.row_samples))}</td>"
+            f"<td>{_escape(_format_transaction_id_samples(group.transaction_id_samples))}</td>"
             "</tr>"
             for group in summary.error_groups
         ]
         details.append(
             "<table class='inner'><thead><tr>"
-            "<th>Column</th><th>Message</th><th>Records Affected</th><th>Row Samples</th>"
+            "<th>Column</th><th>Message</th><th>Records Affected</th><th>TransactionId Samples</th>"
             "</tr></thead><tbody>"
             f"{''.join(group_rows)}"
             "</tbody></table>"
@@ -147,10 +147,10 @@ def _render_status_badge(status: str) -> str:
     return f"<span class='status-badge {css_class}'>{_escape(_status_label(status))}</span>"
 
 
-def _format_row_samples(row_samples: list[int]) -> str:
-    if not row_samples:
+def _format_transaction_id_samples(transaction_id_samples: list[str]) -> str:
+    if not transaction_id_samples:
         return "-"
-    return ", ".join(str(row) for row in row_samples)
+    return ", ".join(transaction_id_samples)
 
 
 def _escape(value: object) -> str:

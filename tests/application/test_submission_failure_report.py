@@ -2,7 +2,7 @@ from planner_to_unit4.application.submission_failure_report import (
     SubmissionFailureReportBuilder,
     format_failure_report,
 )
-from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
+from planner_to_unit4.infrastructure.planning_service import ResolvedPostbackError
 
 
 def _segment(record_start: int, record_end: int) -> list[dict]:
@@ -17,17 +17,23 @@ def test_build_failure_report_groups_errors_by_column_and_message() -> None:
         segment_index=2,
         http_status=400,
         message="Validation errors",
-        log_items=[
-            PostbackLogItem(row=3, column="dim_4", message="B102395 is not a legal BUS"),
-            PostbackLogItem(row=4, column="dim_4", message="B102395 is not a legal BUS"),
-            PostbackLogItem(
-                row=0,
-                column=None,
-                message=(
-                    "There are more errors, but only the first 100 errors is returned from the web service"
-                ),
+        resolved_errors=[
+            ResolvedPostbackError(
+                row_index_1_based=1,
+                transaction_id=-3,
+                column="dim_4",
+                message="B102395 is not a legal BUS",
+                failed_row={"record_no": 3},
+            ),
+            ResolvedPostbackError(
+                row_index_1_based=2,
+                transaction_id=-4,
+                column="dim_4",
+                message="B102395 is not a legal BUS",
+                failed_row={"record_no": 4},
             ),
         ],
+        has_partial_errors_notice=True,
     )
 
     report = builder.build_failure_report(pipeline_run_id="run-1")
@@ -41,7 +47,7 @@ def test_build_failure_report_groups_errors_by_column_and_message() -> None:
     assert report.summaries[1].has_partial_errors_notice is True
     assert report.summaries[1].error_groups[0].column == "dim_4"
     assert report.summaries[1].error_groups[0].affected_records == 2
-    assert report.summaries[1].error_groups[0].row_samples == [3, 4]
+    assert report.summaries[1].error_groups[0].transaction_id_samples == ["-3", "-4"]
 
 
 def test_mark_skipped_after_marks_remaining_segments() -> None:
@@ -50,7 +56,13 @@ def test_mark_skipped_after_marks_remaining_segments() -> None:
     )
 
     builder.mark_submitted(segment_index=1, message="Submitted", http_status=200)
-    builder.mark_failed(segment_index=2, http_status=None, message="network timeout", log_items=[])
+    builder.mark_failed(
+        segment_index=2,
+        http_status=None,
+        message="network timeout",
+        resolved_errors=[],
+        has_partial_errors_notice=False,
+    )
     builder.mark_skipped_after(failed_segment_index=2)
 
     report = builder.build_failure_report(pipeline_run_id="run-2")
@@ -67,16 +79,34 @@ def test_row_samples_are_limited_to_ten() -> None:
         segment_index=1,
         http_status=400,
         message="Validation errors",
-        log_items=[
-            PostbackLogItem(row=row, column="dim_4", message="B102395 is not a legal BUS")
+        resolved_errors=[
+            ResolvedPostbackError(
+                row_index_1_based=row,
+                transaction_id=-row,
+                column="dim_4",
+                message="B102395 is not a legal BUS",
+                failed_row={"record_no": row},
+            )
             for row in range(1, 16)
         ],
+        has_partial_errors_notice=False,
     )
 
     report = builder.build_failure_report(pipeline_run_id="run-3")
 
     assert report.summaries[0].error_groups[0].affected_records == 15
-    assert report.summaries[0].error_groups[0].row_samples == list(range(1, 11))
+    assert report.summaries[0].error_groups[0].transaction_id_samples == [
+        "-1",
+        "-2",
+        "-3",
+        "-4",
+        "-5",
+        "-6",
+        "-7",
+        "-8",
+        "-9",
+        "-10",
+    ]
 
     formatted = format_failure_report(report)
-    assert "row_samples=1, 2, 3, 4, 5, 6, 7, 8, 9, 10" in formatted
+    assert "transaction_id_samples=-1, -2, -3, -4, -5, -6, -7, -8, -9, -10" in formatted

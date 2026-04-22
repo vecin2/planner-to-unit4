@@ -1,7 +1,7 @@
 from datetime import datetime
 
+from planner_to_unit4.infrastructure.planning_service import ResolvedPostbackError
 from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmissionError
-from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
 from tests.support.application_runner import ApplicationRunner
 from tests.support.fakes import FakePlanningService, FakeSegmentMonitor
 
@@ -77,6 +77,8 @@ def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None
 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
     assert outcome.status == "COMPLETED"
+    assert outcome.is_success() is True
+    assert outcome.is_failed() is False
     assert outcome.should_send_email is False
     assert outcome.failed_segments == 0
     assert outcome.email_html_body == ""
@@ -183,11 +185,13 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
             "order_no": None,
             "http_status": 200,
             "message": failure_message,
-            "log_items": [
-                PostbackLogItem(
-                    row=2,
+            "resolved_errors": [
+                ResolvedPostbackError(
+                    row_index_1_based=2,
+                    transaction_id=None,
                     column="dim_3",
                     message="B102397 is not a legal RESNO",
+                    failed_row=None,
                 )
             ],
         }
@@ -213,6 +217,8 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
+    assert outcome.is_success() is False
+    assert outcome.is_failed() is True
     assert outcome.should_send_email is True
     assert "<html>" in outcome.email_html_body
     assert "Planner Upload Result - Failed" in outcome.email_subject
@@ -221,7 +227,10 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     assert "failed_segments=1" in summary
     assert "segment=1 records=1 range=1-1 status=Failed http_status=200" in summary
     assert f"message={normalized_failure_message}" in summary
-    assert "column=dim_3 message=B102397 is not a legal RESNO affected_records=1" in summary
+    assert (
+        "column=dim_3 message=B102397 is not a legal RESNO "
+        "affected_records=1 transaction_id_samples=?"
+    ) in summary
 
     runner.assert_segments_failed(expected_failures)
 

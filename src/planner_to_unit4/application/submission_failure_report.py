@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from dataclasses import replace
 from typing import Literal
 
-from planner_to_unit4.infrastructure.soap_response_parser import PostbackLogItem
+from planner_to_unit4.infrastructure.planning_service import ResolvedPostbackError
 
 
 SegmentStatus = Literal["SUBMITTED", "FAILED", "SKIPPED"]
@@ -15,7 +15,8 @@ class SegmentErrorGroup:
     column: str | None
     message: str | None
     affected_records: int
-    row_samples: list[int]
+    transaction_id_samples: list[str]
+    failed_row_samples: list[dict[str, object] | None]
 
 
 @dataclass(frozen=True)
@@ -83,11 +84,12 @@ class SubmissionFailureReportBuilder:
         segment_index: int,
         http_status: int | None,
         message: str | None,
-        log_items: list[PostbackLogItem],
+        resolved_errors: list[ResolvedPostbackError],
+        has_partial_errors_notice: bool,
     ) -> None:
         state = self._states[segment_index]
-        error_groups, has_partial_errors_notice = _build_error_groups(
-            log_items,
+        error_groups = _build_error_groups(
+            resolved_errors,
             row_sample_limit=self.row_sample_limit,
         )
         self._states[segment_index] = replace(
@@ -159,7 +161,7 @@ def format_failure_report(report: SubmissionFailureReport) -> str:
                 f"column={error.column or '?'} "
                 f"message={error.message or '?'} "
                 f"affected_records={error.affected_records} "
-                f"row_samples={_format_row_samples(error.row_samples)}"
+                f"transaction_id_samples={_format_transaction_id_samples(error.transaction_id_samples)}"
             )
         if summary.has_partial_errors_notice:
             lines.append(
@@ -170,40 +172,38 @@ def format_failure_report(report: SubmissionFailureReport) -> str:
 
 
 def _build_error_groups(
-    log_items: list[PostbackLogItem],
+    resolved_errors: list[ResolvedPostbackError],
     *,
     row_sample_limit: int,
-) -> tuple[list[SegmentErrorGroup], bool]:
-    grouped: dict[tuple[str | None, str | None], list[PostbackLogItem]] = {}
-    has_partial_errors_notice = False
-    for log_item in log_items:
-        if _is_partial_errors_notice(log_item):
-            has_partial_errors_notice = True
-            continue
-        key = (log_item.column, log_item.message)
-        grouped.setdefault(key, []).append(log_item)
+) -> list[SegmentErrorGroup]:
+    grouped: dict[tuple[str | None, str | None], list[ResolvedPostbackError]] = {}
+    for resolved_error in resolved_errors:
+        key = (resolved_error.column, resolved_error.message)
+        grouped.setdefault(key, []).append(resolved_error)
 
     grouped_summaries: list[SegmentErrorGroup] = []
     for column, message in sorted(grouped):
         items = grouped[(column, message)]
-        valid_rows = sorted({item.row for item in items if item.row is not None and item.row > 0})
-        row_samples = valid_rows[:row_sample_limit]
-        affected_records = len(valid_rows) if valid_rows else len(items)
+        transaction_ids = {item.transaction_id for item in items if item.transaction_id is not None}
+        unknown_count = sum(1 for item in items if item.transaction_id is None)
+        affected_records = len(transaction_ids) + unknown_count
+
+        sampled_items = items[:row_sample_limit]
+        transaction_id_samples = [
+            _transaction_id_label(item.transaction_id) for item in sampled_items
+        ]
+        failed_row_samples = [item.failed_row for item in sampled_items]
+
         grouped_summaries.append(
             SegmentErrorGroup(
                 column=column,
                 message=message,
                 affected_records=affected_records,
-                row_samples=row_samples,
+                transaction_id_samples=transaction_id_samples,
+                failed_row_samples=failed_row_samples,
             )
         )
-    return grouped_summaries, has_partial_errors_notice
-
-
-def _is_partial_errors_notice(log_item: PostbackLogItem) -> bool:
-    if log_item.row != 0 or log_item.message is None:
-        return False
-    return "first 100 errors" in log_item.message.lower()
+    return grouped_summaries
 
 
 def _extract_record_no(row: dict) -> int | None:
@@ -246,7 +246,13 @@ def _format_message(status: SegmentStatus, message: str | None, skipped_reason: 
     return f" message={message}"
 
 
-def _format_row_samples(row_samples: list[int]) -> str:
-    if not row_samples:
+def _transaction_id_label(transaction_id: int | None) -> str:
+    if transaction_id is None:
+        return "?"
+    return str(transaction_id)
+
+
+def _format_transaction_id_samples(transaction_id_samples: list[str]) -> str:
+    if not transaction_id_samples:
         return "-"
-    return ", ".join(str(row) for row in row_samples)
+    return ", ".join(transaction_id_samples)

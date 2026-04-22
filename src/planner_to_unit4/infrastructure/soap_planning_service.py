@@ -4,6 +4,7 @@ from typing import Callable
 
 from planner_to_unit4.infrastructure.planning_service import (
     PlanningService,
+    ResolvedPostbackError,
     SegmentSubmissionResult,
 )
 from planner_to_unit4.infrastructure.soap_envelope_builder import (
@@ -13,6 +14,7 @@ from planner_to_unit4.infrastructure.soap_envelope_builder import (
 )
 from planner_to_unit4.infrastructure.soap_http_client import HttpPost
 from planner_to_unit4.infrastructure.soap_response_parser import (
+    PostbackLogItem,
     parse_segment_submission_response,
 )
 
@@ -81,6 +83,10 @@ class SoapPlanningService(PlanningService):
             f"http_status={response.status_code} order_no={parsed.order_no} "
             f"message={parsed.message}"
         )
+        resolved_errors, has_partial_errors_notice = _resolve_postback_errors(
+            parsed.log_items,
+            segment,
+        )
         return {
             "order_no": parsed.order_no,
             "http_status": response.status_code,
@@ -89,7 +95,8 @@ class SoapPlanningService(PlanningService):
             "status_message": parsed.status_message,
             "fault_code": parsed.fault_code,
             "fault_string": parsed.fault_string,
-            "log_items": parsed.log_items,
+            "resolved_errors": resolved_errors,
+            "has_partial_errors_notice": has_partial_errors_notice,
         }
 
 
@@ -97,3 +104,81 @@ class SoapSubmissionError(RuntimeError):
     def __init__(self, message: str, request_payload: str) -> None:
         super().__init__(message)
         self.request_payload = request_payload
+
+
+def _resolve_postback_errors(
+    log_items: list[PostbackLogItem],
+    segment: list[dict],
+) -> tuple[list[ResolvedPostbackError], bool]:
+    resolved_errors: list[ResolvedPostbackError] = []
+    has_partial_errors_notice = False
+    for log_item in log_items:
+        if _is_partial_errors_notice(log_item):
+            has_partial_errors_notice = True
+            continue
+        resolved_errors.append(_resolve_postback_error(log_item, segment))
+    return resolved_errors, has_partial_errors_notice
+
+
+def _resolve_postback_error(
+    log_item: PostbackLogItem,
+    segment: list[dict],
+) -> ResolvedPostbackError:
+    row_index_1_based = _normalize_row_index(log_item.row)
+    failed_row = _extract_failed_row(segment, row_index_1_based)
+    return ResolvedPostbackError(
+        row_index_1_based=row_index_1_based,
+        transaction_id=_transaction_id_from_row(failed_row),
+        column=log_item.column,
+        message=log_item.message,
+        failed_row=failed_row,
+    )
+
+
+def _normalize_row_index(row: int | None) -> int | None:
+    if row is None or row <= 0:
+        return None
+    return row
+
+
+def _extract_failed_row(
+    segment: list[dict],
+    row_index_1_based: int | None,
+) -> dict[str, object] | None:
+    if row_index_1_based is None:
+        return None
+    if row_index_1_based > len(segment):
+        return None
+    failed_row = segment[row_index_1_based - 1]
+    if not isinstance(failed_row, dict):
+        return None
+    return dict(failed_row)
+
+
+def _transaction_id_from_row(row: dict[str, object] | None) -> int | None:
+    if row is None:
+        return None
+
+    raw_record_no = row.get("record_no")
+    if raw_record_no is None or isinstance(raw_record_no, bool):
+        return None
+
+    if isinstance(raw_record_no, int):
+        record_no = raw_record_no
+    elif isinstance(raw_record_no, str):
+        try:
+            record_no = int(raw_record_no.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if record_no <= 0:
+        return None
+    return -record_no
+
+
+def _is_partial_errors_notice(log_item: PostbackLogItem) -> bool:
+    if log_item.row != 0 or log_item.message is None:
+        return False
+    return "first 100 errors" in log_item.message.lower()
