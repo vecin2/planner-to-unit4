@@ -6,7 +6,6 @@ from typing import TypedDict
 @dataclass(frozen=True)
 class ResolvedPostbackError:
     row_index_1_based: int | None
-    transaction_id: int | None
     column: str | None
     message: str | None
     failed_row: dict[str, object] | None
@@ -21,7 +20,6 @@ class SegmentSubmissionResult(TypedDict, total=False):
     fault_code: str | None
     fault_string: str | None
     resolved_errors: list[ResolvedPostbackError]
-    has_partial_errors_notice: bool
 
 
 class PlanningService(Protocol):

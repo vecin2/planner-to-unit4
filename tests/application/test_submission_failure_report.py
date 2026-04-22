@@ -20,20 +20,17 @@ def test_build_failure_report_groups_errors_by_column_and_message() -> None:
         resolved_errors=[
             ResolvedPostbackError(
                 row_index_1_based=1,
-                transaction_id=-3,
                 column="dim_4",
                 message="B102395 is not a legal BUS",
                 failed_row={"record_no": 3},
             ),
             ResolvedPostbackError(
                 row_index_1_based=2,
-                transaction_id=-4,
                 column="dim_4",
                 message="B102395 is not a legal BUS",
                 failed_row={"record_no": 4},
             ),
         ],
-        has_partial_errors_notice=True,
     )
 
     report = builder.build_failure_report(pipeline_run_id="run-1")
@@ -44,10 +41,9 @@ def test_build_failure_report_groups_errors_by_column_and_message() -> None:
     assert report.summaries[1].status == "FAILED"
     assert report.summaries[1].record_no_start == 3
     assert report.summaries[1].record_no_end == 5
-    assert report.summaries[1].has_partial_errors_notice is True
     assert report.summaries[1].error_groups[0].column == "dim_4"
     assert report.summaries[1].error_groups[0].affected_records == 2
-    assert report.summaries[1].error_groups[0].transaction_id_samples == ["-3", "-4"]
+    assert report.summaries[1].error_groups[0].record_no_samples == ["3", "4"]
 
 
 def test_mark_skipped_after_marks_remaining_segments() -> None:
@@ -61,7 +57,6 @@ def test_mark_skipped_after_marks_remaining_segments() -> None:
         http_status=None,
         message="network timeout",
         resolved_errors=[],
-        has_partial_errors_notice=False,
     )
     builder.mark_skipped_after(failed_segment_index=2)
 
@@ -82,31 +77,29 @@ def test_row_samples_are_limited_to_ten() -> None:
         resolved_errors=[
             ResolvedPostbackError(
                 row_index_1_based=row,
-                transaction_id=-row,
                 column="dim_4",
                 message="B102395 is not a legal BUS",
                 failed_row={"record_no": row},
             )
             for row in range(1, 16)
         ],
-        has_partial_errors_notice=False,
     )
 
     report = builder.build_failure_report(pipeline_run_id="run-3")
 
     assert report.summaries[0].error_groups[0].affected_records == 15
-    assert report.summaries[0].error_groups[0].transaction_id_samples == [
-        "-1",
-        "-2",
-        "-3",
-        "-4",
-        "-5",
-        "-6",
-        "-7",
-        "-8",
-        "-9",
-        "-10",
+    assert report.summaries[0].error_groups[0].record_no_samples == [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
     ]
 
     formatted = format_failure_report(report)
-    assert "transaction_id_samples=-1, -2, -3, -4, -5, -6, -7, -8, -9, -10" in formatted
+    assert "record_no_samples=1, 2, 3, 4, 5, 6, 7, 8, 9, 10" in formatted

@@ -19,20 +19,17 @@ def test_render_failure_notification_contains_html_summary() -> None:
         resolved_errors=[
             ResolvedPostbackError(
                 row_index_1_based=1,
-                transaction_id=-2,
                 column="dim_4",
                 message="B102395 is not a legal BUS",
                 failed_row={"record_no": 2},
             ),
             ResolvedPostbackError(
                 row_index_1_based=2,
-                transaction_id=-3,
                 column="dim_4",
                 message="B102395 is not a legal BUS",
                 failed_row={"record_no": 3},
             ),
         ],
-        has_partial_errors_notice=False,
     )
     builder.mark_skipped_after(failed_segment_index=2)
     report = builder.build_failure_report(pipeline_run_id="run-100")
@@ -62,13 +59,11 @@ def test_render_failure_notification_escapes_html_in_messages() -> None:
         resolved_errors=[
             ResolvedPostbackError(
                 row_index_1_based=1,
-                transaction_id=-1,
                 column="dim_4",
                 message='bad "tag" <x>',
                 failed_row={"record_no": 1},
             )
         ],
-        has_partial_errors_notice=False,
     )
     report = builder.build_failure_report(pipeline_run_id="run-101")
 

@@ -15,7 +15,7 @@ class SegmentErrorGroup:
     column: str | None
     message: str | None
     affected_records: int
-    transaction_id_samples: list[str]
+    record_no_samples: list[str]
     failed_row_samples: list[dict[str, object] | None]
 
 
@@ -30,7 +30,6 @@ class SegmentFailureSummary:
     message: str | None
     skipped_reason: str | None
     error_groups: list[SegmentErrorGroup]
-    has_partial_errors_notice: bool
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,6 @@ class SubmissionFailureReportBuilder:
                 message=None,
                 skipped_reason=None,
                 error_groups=[],
-                has_partial_errors_notice=False,
             )
             for index, segment in enumerate(self.segments, start=1)
         }
@@ -75,7 +73,6 @@ class SubmissionFailureReportBuilder:
             message=message,
             skipped_reason=None,
             error_groups=[],
-            has_partial_errors_notice=False,
         )
 
     def mark_failed(
@@ -85,7 +82,6 @@ class SubmissionFailureReportBuilder:
         http_status: int | None,
         message: str | None,
         resolved_errors: list[ResolvedPostbackError],
-        has_partial_errors_notice: bool,
     ) -> None:
         state = self._states[segment_index]
         error_groups = _build_error_groups(
@@ -99,7 +95,6 @@ class SubmissionFailureReportBuilder:
             message=message,
             skipped_reason=None,
             error_groups=error_groups,
-            has_partial_errors_notice=has_partial_errors_notice,
         )
 
     def mark_skipped_after(self, *, failed_segment_index: int) -> None:
@@ -114,7 +109,6 @@ class SubmissionFailureReportBuilder:
                     f"Skipped: not attempted due to fail-fast after segment {failed_segment_index}."
                 ),
                 error_groups=[],
-                has_partial_errors_notice=False,
             )
 
     def has_failures(self) -> bool:
@@ -161,12 +155,7 @@ def format_failure_report(report: SubmissionFailureReport) -> str:
                 f"column={error.column or '?'} "
                 f"message={error.message or '?'} "
                 f"affected_records={error.affected_records} "
-                f"transaction_id_samples={_format_transaction_id_samples(error.transaction_id_samples)}"
-            )
-        if summary.has_partial_errors_notice:
-            lines.append(
-                "  - note=Source returned partial errors; "
-                "only the first 100 errors were returned by the web service"
+                f"record_no_samples={_format_record_no_samples(error.record_no_samples)}"
             )
     return "\n".join(lines)
 
@@ -184,14 +173,18 @@ def _build_error_groups(
     grouped_summaries: list[SegmentErrorGroup] = []
     for column, message in sorted(grouped):
         items = grouped[(column, message)]
-        transaction_ids = {item.transaction_id for item in items if item.transaction_id is not None}
-        unknown_count = sum(1 for item in items if item.transaction_id is None)
-        affected_records = len(transaction_ids) + unknown_count
+        known_record_nos = {
+            _extract_record_no_from_failed_row(item.failed_row)
+            for item in items
+            if _extract_record_no_from_failed_row(item.failed_row) is not None
+        }
+        unknown_count = sum(
+            1 for item in items if _extract_record_no_from_failed_row(item.failed_row) is None
+        )
+        affected_records = len(known_record_nos) + unknown_count
 
         sampled_items = items[:row_sample_limit]
-        transaction_id_samples = [
-            _transaction_id_label(item.transaction_id) for item in sampled_items
-        ]
+        record_no_samples = [_record_no_label(item.failed_row) for item in sampled_items]
         failed_row_samples = [item.failed_row for item in sampled_items]
 
         grouped_summaries.append(
@@ -199,7 +192,7 @@ def _build_error_groups(
                 column=column,
                 message=message,
                 affected_records=affected_records,
-                transaction_id_samples=transaction_id_samples,
+                record_no_samples=record_no_samples,
                 failed_row_samples=failed_row_samples,
             )
         )
@@ -216,6 +209,12 @@ def _extract_record_no(row: dict) -> int | None:
         except ValueError:
             return None
     return None
+
+
+def _extract_record_no_from_failed_row(row: dict[str, object] | None) -> int | None:
+    if row is None:
+        return None
+    return _extract_record_no(row)
 
 
 def _status_label(status: SegmentStatus) -> str:
@@ -246,13 +245,14 @@ def _format_message(status: SegmentStatus, message: str | None, skipped_reason: 
     return f" message={message}"
 
 
-def _transaction_id_label(transaction_id: int | None) -> str:
-    if transaction_id is None:
+def _record_no_label(row: dict[str, object] | None) -> str:
+    record_no = _extract_record_no_from_failed_row(row)
+    if record_no is None:
         return "?"
-    return str(transaction_id)
+    return str(record_no)
 
 
-def _format_transaction_id_samples(transaction_id_samples: list[str]) -> str:
-    if not transaction_id_samples:
+def _format_record_no_samples(record_no_samples: list[str]) -> str:
+    if not record_no_samples:
         return "-"
-    return ", ".join(transaction_id_samples)
+    return ", ".join(record_no_samples)

@@ -188,7 +188,6 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
             "resolved_errors": [
                 ResolvedPostbackError(
                     row_index_1_based=2,
-                    transaction_id=None,
                     column="dim_3",
                     message="B102397 is not a legal RESNO",
                     failed_row=None,
@@ -228,8 +227,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     assert "segment=1 records=1 range=1-1 status=Failed http_status=200" in summary
     assert f"message={normalized_failure_message}" in summary
     assert (
-        "column=dim_3 message=B102397 is not a legal RESNO "
-        "affected_records=1 transaction_id_samples=?"
+        "column=dim_3 message=B102397 is not a legal RESNO affected_records=1 record_no_samples=?"
     ) in summary
 
     runner.assert_segments_failed(expected_failures)

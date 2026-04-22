@@ -83,10 +83,7 @@ class SoapPlanningService(PlanningService):
             f"http_status={response.status_code} order_no={parsed.order_no} "
             f"message={parsed.message}"
         )
-        resolved_errors, has_partial_errors_notice = _resolve_postback_errors(
-            parsed.log_items,
-            segment,
-        )
+        resolved_errors = _resolve_postback_errors(parsed.log_items, segment)
         return {
             "order_no": parsed.order_no,
             "http_status": response.status_code,
@@ -96,7 +93,6 @@ class SoapPlanningService(PlanningService):
             "fault_code": parsed.fault_code,
             "fault_string": parsed.fault_string,
             "resolved_errors": resolved_errors,
-            "has_partial_errors_notice": has_partial_errors_notice,
         }
 
 
@@ -109,15 +105,13 @@ class SoapSubmissionError(RuntimeError):
 def _resolve_postback_errors(
     log_items: list[PostbackLogItem],
     segment: list[dict],
-) -> tuple[list[ResolvedPostbackError], bool]:
+) -> list[ResolvedPostbackError]:
     resolved_errors: list[ResolvedPostbackError] = []
-    has_partial_errors_notice = False
     for log_item in log_items:
         if _is_partial_errors_notice(log_item):
-            has_partial_errors_notice = True
             continue
         resolved_errors.append(_resolve_postback_error(log_item, segment))
-    return resolved_errors, has_partial_errors_notice
+    return resolved_errors
 
 
 def _resolve_postback_error(
@@ -128,7 +122,6 @@ def _resolve_postback_error(
     failed_row = _extract_failed_row(segment, row_index_1_based)
     return ResolvedPostbackError(
         row_index_1_based=row_index_1_based,
-        transaction_id=_transaction_id_from_row(failed_row),
         column=log_item.column,
         message=log_item.message,
         failed_row=failed_row,
@@ -153,29 +146,6 @@ def _extract_failed_row(
     if not isinstance(failed_row, dict):
         return None
     return dict(failed_row)
-
-
-def _transaction_id_from_row(row: dict[str, object] | None) -> int | None:
-    if row is None:
-        return None
-
-    raw_record_no = row.get("record_no")
-    if raw_record_no is None or isinstance(raw_record_no, bool):
-        return None
-
-    if isinstance(raw_record_no, int):
-        record_no = raw_record_no
-    elif isinstance(raw_record_no, str):
-        try:
-            record_no = int(raw_record_no.strip())
-        except ValueError:
-            return None
-    else:
-        return None
-
-    if record_no <= 0:
-        return None
-    return -record_no
 
 
 def _is_partial_errors_notice(log_item: PostbackLogItem) -> bool:

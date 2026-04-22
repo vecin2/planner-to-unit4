@@ -115,7 +115,6 @@ class SubmitBudgetVariance:
                     http_status=None,
                     message=str(exc),
                     resolved_errors=[],
-                    has_partial_errors_notice=False,
                 )
                 report_builder.mark_skipped_after(failed_segment_index=segment_index)
                 self.segment_monitor.record_failed(
@@ -155,11 +154,9 @@ class SubmitBudgetVariance:
 
             if order_no is None:
                 resolved_errors = _extract_resolved_errors(result.get("resolved_errors"))
-                has_partial_errors_notice = _as_bool(result.get("has_partial_errors_notice"))
                 normalized_message = _normalize_failed_segment_message(
                     message=message,
                     resolved_errors=resolved_errors,
-                    has_partial_errors_notice=has_partial_errors_notice,
                 )
                 self.segment_monitor.record_failed(
                     pipeline_run_id=pipeline_run_id,
@@ -178,7 +175,6 @@ class SubmitBudgetVariance:
                     http_status=http_status,
                     message=normalized_message,
                     resolved_errors=resolved_errors,
-                    has_partial_errors_notice=has_partial_errors_notice,
                 )
                 self._save_failed_request_payload(
                     snapshot_path=snapshot_path,
@@ -350,7 +346,6 @@ def _extract_resolved_errors(raw_resolved_errors: object) -> list[ResolvedPostba
         parsed.append(
             ResolvedPostbackError(
                 row_index_1_based=_as_optional_int(raw.get("row_index_1_based")),
-                transaction_id=_as_optional_int(raw.get("transaction_id")),
                 column=_as_optional_str(raw.get("column")),
                 message=_as_optional_str(raw.get("message")),
                 failed_row=failed_row,
@@ -376,16 +371,11 @@ def _as_optional_str(value: object) -> str | None:
     return None
 
 
-def _as_bool(value: object) -> bool:
-    return isinstance(value, bool) and value
-
-
 def _normalize_failed_segment_message(
     *,
     message: str | None,
     resolved_errors: list[ResolvedPostbackError],
-    has_partial_errors_notice: bool,
 ) -> str | None:
-    if resolved_errors or has_partial_errors_notice:
+    if resolved_errors:
         return LOG_ITEMS_FAILURE_MESSAGE
     return message

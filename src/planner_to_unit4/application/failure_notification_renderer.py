@@ -63,7 +63,6 @@ def _render_failure_html(*, report: SubmissionFailureReport, snapshot_path: str)
         ".status-submitted{background:#e8f7ee;color:#0f5132;border:1px solid #b7e1c2;}"
         ".status-failed{background:#fbeaea;color:#842029;border:1px solid #f0b5b8;}"
         ".status-skipped{background:#eef2f7;color:#344054;border:1px solid #d0d7e2;}"
-        ".warn{margin-top:8px;padding:8px;background:#fff7df;border:1px solid #f1d48a;color:#8a4b08;border-radius:6px;font-size:12px;}"
         "</style></head><body>"
         "<article class='card'>"
         "<header class='head'>"
@@ -104,21 +103,16 @@ def _render_error_summary_cell(summary: SegmentFailureSummary) -> str:
             f"<td>{_escape(group.column or '?')}</td>"
             f"<td>{_escape(group.message or '?')}</td>"
             f"<td>{group.affected_records}</td>"
-            f"<td>{_escape(_format_transaction_id_samples(group.transaction_id_samples))}</td>"
+            f"<td>{_escape(_format_record_no_samples(group.record_no_samples))}</td>"
             "</tr>"
             for group in summary.error_groups
         ]
         details.append(
             "<table class='inner'><thead><tr>"
-            "<th>Column</th><th>Message</th><th>Records Affected</th><th>TransactionId Samples</th>"
+            "<th>Column</th><th>Message</th><th>Records Affected</th><th>Record No Samples</th>"
             "</tr></thead><tbody>"
             f"{''.join(group_rows)}"
             "</tbody></table>"
-        )
-    if summary.has_partial_errors_notice:
-        details.append(
-            "<div class='warn'>Source returned partial errors; only the first 100 errors were "
-            "returned by the web service.</div>"
         )
     return "".join(details) if details else "Failed"
 
@@ -147,10 +141,10 @@ def _render_status_badge(status: str) -> str:
     return f"<span class='status-badge {css_class}'>{_escape(_status_label(status))}</span>"
 
 
-def _format_transaction_id_samples(transaction_id_samples: list[str]) -> str:
-    if not transaction_id_samples:
+def _format_record_no_samples(record_no_samples: list[str]) -> str:
+    if not record_no_samples:
         return "-"
-    return ", ".join(transaction_id_samples)
+    return ", ".join(record_no_samples)
 
 
 def _escape(value: object) -> str:

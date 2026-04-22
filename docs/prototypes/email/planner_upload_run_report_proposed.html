@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Planner Upload Run Report - Proposed</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --line: #e4e8f0;
+        --text: #1f2937;
+        --muted: #5b6473;
+        --ok-bg: #e8faf0;
+        --ok-text: #0b6b3d;
+        --bad-bg: #fdeaea;
+        --bad-text: #991b1b;
+        --warn-bg: #fff7df;
+        --warn-text: #92400e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        background: radial-gradient(circle at top right, #eef6ff, var(--bg));
+        color: var(--text);
+        font: 14px/1.5 "Segoe UI", Tahoma, sans-serif;
+      }
+
+      .wrapper {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(20, 31, 54, 0.06);
+      }
+
+      .header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .title {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .meta {
+        margin: 6px 0 0;
+        color: var(--muted);
+      }
+
+      .content {
+        padding: 20px 24px 24px;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .stat {
+        border: 1px solid var(--line);
+        background: #f8fafe;
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+
+      .stat .label {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .stat .value {
+        display: block;
+        margin-top: 2px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .segment {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+
+      .segment-head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f9fbff;
+      }
+
+      .segment-meta {
+        color: var(--muted);
+      }
+
+      .status {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .status.ok {
+        background: var(--ok-bg);
+        color: var(--ok-text);
+      }
+
+      .status.bad {
+        background: var(--bad-bg);
+        color: var(--bad-text);
+      }
+
+      .segment-body {
+        padding: 12px 14px 14px;
+      }
+
+      .group {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .group-head {
+        padding: 10px 12px;
+        background: #fcfdff;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .group-head strong {
+        display: inline;
+      }
+
+      .group-head .sub {
+        display: inline;
+        margin-left: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .group-head .key {
+        color: var(--bad-text);
+        font-weight: 700;
+      }
+
+      .sample-note {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 8px;
+        text-align: left;
+        vertical-align: top;
+        font-size: 12px;
+      }
+
+      th {
+        background: #f2f5fb;
+        white-space: nowrap;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        background: #f4f6fb;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+
+      .warning {
+        margin-top: 10px;
+        padding: 8px 10px;
+        background: var(--warn-bg);
+        border: 1px solid #f6df9b;
+        color: var(--warn-text);
+        border-radius: 6px;
+        font-size: 12px;
+      }
+
+      .footer {
+        border-top: 1px solid var(--line);
+        background: #fafbfd;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 12px 24px;
+      }
+
+      @media (max-width: 980px) {
+        body {
+          padding: 12px;
+        }
+
+        .header,
+        .content,
+        .footer {
+          padding-left: 14px;
+          padding-right: 14px;
+        }
+
+        .stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <article class="card">
+        <header class="header">
+          <h1 class="title">Planner Upload Result</h1>
+          <p class="meta">
+            Pipeline Run ID: <strong>run-2026-04-20-1030</strong> |
+            Archived File: <strong>Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/Plan_Data_2026-04-20-1030_ab12cd34.json</strong> |
+            Submitted: <strong>2026-04-20 10:30 UTC</strong>
+          </p>
+        </header>
+
+        <section class="content">
+          <div class="stats">
+            <div class="stat"><span class="label">Total Records</span><span class="value">2,250</span></div>
+            <div class="stat"><span class="label">Segments Submitted</span><span class="value">2</span></div>
+            <div class="stat"><span class="label">Segments Failed</span><span class="value">1</span></div>
+            <div class="stat"><span class="label">Status</span><span class="value" style="color:#991b1b;">FAILED</span></div>
+          </div>
+
+          <section class="segment">
+            <div class="segment-head">
+              <strong>Segment 1</strong>
+              <span class="status ok">Submitted</span>
+              <span class="segment-meta">Records: <strong>1000</strong></span>
+              <span class="segment-meta">Range: <strong>1-1000</strong></span>
+              <span class="segment-meta">HTTP: <strong>200</strong></span>
+            </div>
+            <div class="segment-body">No validation errors.</div>
+          </section>
+
+          <section class="segment">
+            <div class="segment-head">
+              <strong>Segment 2</strong>
+              <span class="status bad">Failed</span>
+              <span class="segment-meta">Records: <strong>250</strong></span>
+              <span class="segment-meta">Range: <strong>1001-1250</strong></span>
+              <span class="segment-meta">HTTP: <strong>400</strong></span>
+            </div>
+
+            <div class="segment-body">
+              <section class="group">
+                <div class="group-head">
+                  <strong><span class="key">Error:</span> Dim2 cannot be null</strong>
+                  <span class="sub">| Rows affected: 10</span>
+                </div>
+                <p class="sample-note">Sample failed rows (not full list)</p>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>record_no</th>
+                        <th>Client</th>
+                        <th>Description</th>
+                        <th>Account</th>
+                        <th>Dim2</th>
+                        <th>Dim3</th>
+                        <th>Dim4</th>
+                        <th>Dim6</th>
+                        <th>Dim7</th>
+                        <th>Currency</th>
+                        <th>Period</th>
+                        <th>CurAmount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>21667</td>
+                        <td>C1</td>
+                        <td>FAC Costs - 14101</td>
+                        <td>92898</td>
+                        <td>null</td>
+                        <td>14101</td>
+                        <td>C128IT18</td>
+                        <td>C128IT18FA1</td>
+                        <td>PAL</td>
+                        <td>USD</td>
+                        <td>202609</td>
+                        <td>-29.17</td>
+                      </tr>
+                      <tr>
+                        <td>21668</td>
+                        <td>C1</td>
+                        <td>FAC Costs - 14101</td>
+                        <td>92898</td>
+                        <td>null</td>
+                        <td>14101</td>
+                        <td>C128IT18</td>
+                        <td>C128IT18FA1</td>
+                        <td>PAL</td>
+                        <td>USD</td>
+                        <td>202610</td>
+                        <td>-29.17</td>
+                      </tr>
+                      <tr>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>Unresolved row index from source service</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                        <td>?</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="group">
+                <div class="group-head">
+                  <strong><span class="key">Error:</span> B102397 is not a legal BUS</strong>
+                  <span class="sub">| Rows affected: 2</span>
+                </div>
+                <p class="sample-note">Sample failed rows (not full list)</p>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>record_no</th>
+                        <th>Client</th>
+                        <th>Description</th>
+                        <th>Account</th>
+                        <th>Dim2</th>
+                        <th>Dim3</th>
+                        <th>Dim4</th>
+                        <th>Dim6</th>
+                        <th>Dim7</th>
+                        <th>Currency</th>
+                        <th>Period</th>
+                        <th>CurAmount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>21888</td>
+                        <td>C1</td>
+                        <td>Vendor Cost</td>
+                        <td>91344</td>
+                        <td>A1471</td>
+                        <td>19021</td>
+                        <td>BADCODE</td>
+                        <td>A1471FA1</td>
+                        <td>PAL</td>
+                        <td>USD</td>
+                        <td>202611</td>
+                        <td>250.00</td>
+                      </tr>
+                      <tr>
+                        <td>21889</td>
+                        <td>C1</td>
+                        <td>Vendor Cost</td>
+                        <td>91344</td>
+                        <td>A1471</td>
+                        <td>19021</td>
+                        <td>BADCODE</td>
+                        <td>A1471FA1</td>
+                        <td>PAL</td>
+                        <td>USD</td>
+                        <td>202612</td>
+                        <td>250.00</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+            </div>
+          </section>
+
+          <section class="segment">
+            <div class="segment-head">
+              <strong>Segment 3</strong>
+              <span class="status bad">Failed</span>
+              <span class="segment-meta">Records: <strong>1000</strong></span>
+              <span class="segment-meta">Range: <strong>1251-2250</strong></span>
+              <span class="segment-meta">HTTP: <strong>500</strong></span>
+            </div>
+            <div class="segment-body">
+              System error: unable to submit segment.
+            </div>
+          </section>
+        </section>
+
+        <footer class="footer">
+          Prototype notes: fixed row columns are shown per error group; row-level sections are displayed only when postback validation errors are available.
+        </footer>
+      </article>
+    </div>
+  </body>
+</html>
