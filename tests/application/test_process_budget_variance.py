@@ -79,7 +79,6 @@ def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None
     assert outcome.status == "COMPLETED"
     assert outcome.is_success() is True
     assert outcome.is_failed() is False
-    assert outcome.should_send_email is False
     assert outcome.failed_segments == 0
     assert outcome.email_html_body == ""
     runner.assert_segments_sent(expected_segments)
@@ -122,7 +121,6 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
     assert outcome.status == "COMPLETED"
-    assert outcome.should_send_email is False
     runner.assert_segments_sent(expected_segments)
     runner.assert_segments_submitted(expected_submissions)
 
@@ -218,9 +216,7 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     assert outcome.status == "FAILED"
     assert outcome.is_success() is False
     assert outcome.is_failed() is True
-    assert outcome.should_send_email is True
     assert "<html lang='en'>" in outcome.email_html_body
-    assert "Planner Upload Result - Failed" in outcome.email_subject
     summary = outcome.failure_summary_text
     assert "pipeline_run_id=fabric-run-789" in summary
     assert "failed_segments=1" in summary
@@ -273,7 +269,6 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
-    assert outcome.should_send_email is True
     summary = outcome.failure_summary_text
     assert "pipeline_run_id=fabric-run-987" in summary
     assert "failed_segments=1" in summary

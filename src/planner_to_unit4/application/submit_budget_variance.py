@@ -29,8 +29,6 @@ class SubmissionRunOutcome:
     pipeline_run_id: str
     snapshot_path: str
     status: RunStatus
-    should_send_email: bool
-    email_subject: str
     email_html_body: str
     email_text_body: str
     failed_segments: int
@@ -51,8 +49,6 @@ class SubmissionRunOutcome:
             "status": self.status,
             "pipeline_run_id": self.pipeline_run_id,
             "snapshot_path": self.snapshot_path,
-            "should_send_email": self.should_send_email,
-            "email_subject": self.email_subject,
             "email_html_body": self.email_html_body,
             "email_text_body": self.email_text_body,
             "failed_segments": self.failed_segments,
@@ -222,8 +218,6 @@ class SubmitBudgetVariance:
             pipeline_run_id=pipeline_run_id,
             snapshot_path=snapshot_path,
             status="COMPLETED",
-            should_send_email=False,
-            email_subject="",
             email_html_body="",
             email_text_body="",
             failed_segments=0,
@@ -284,8 +278,6 @@ def _build_failed_outcome(
         pipeline_run_id=pipeline_run_id,
         snapshot_path=snapshot_path,
         status="FAILED",
-        should_send_email=True,
-        email_subject=notification.subject,
         email_html_body=notification.html_body,
         email_text_body=notification.text_body,
         failed_segments=report.failed_segments,
