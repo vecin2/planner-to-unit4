@@ -30,11 +30,10 @@ class SubmissionRunOutcome:
     snapshot_path: str
     status: RunStatus
     email_html_body: str
-    email_text_body: str
     failed_segments: int
     skipped_segments: int
     total_segments: int
-    failure_summary_text: str
+    summary_text: str
     error_type: str
     error_message: str
 
@@ -50,11 +49,10 @@ class SubmissionRunOutcome:
             "pipeline_run_id": self.pipeline_run_id,
             "snapshot_path": self.snapshot_path,
             "email_html_body": self.email_html_body,
-            "email_text_body": self.email_text_body,
             "failed_segments": self.failed_segments,
             "skipped_segments": self.skipped_segments,
             "total_segments": self.total_segments,
-            "failure_summary_text": self.failure_summary_text,
+            "summary_text": self.summary_text,
             "error_type": self.error_type,
             "error_message": self.error_message,
         }
@@ -219,11 +217,16 @@ class SubmitBudgetVariance:
             snapshot_path=snapshot_path,
             status="COMPLETED",
             email_html_body="",
-            email_text_body="",
             failed_segments=0,
             skipped_segments=0,
             total_segments=len(segments),
-            failure_summary_text="",
+            summary_text=_build_run_summary_text(
+                status="COMPLETED",
+                failed_segments=0,
+                skipped_segments=0,
+                total_segments=len(segments),
+                reason=None,
+            ),
             error_type="",
             error_message="",
         )
@@ -279,14 +282,46 @@ def _build_failed_outcome(
         snapshot_path=snapshot_path,
         status="FAILED",
         email_html_body=notification.html_body,
-        email_text_body=notification.text_body,
         failed_segments=report.failed_segments,
         skipped_segments=report.skipped_segments,
         total_segments=report.total_segments,
-        failure_summary_text=notification.text_body,
+        summary_text=_build_run_summary_text(
+            status="FAILED",
+            failed_segments=report.failed_segments,
+            skipped_segments=report.skipped_segments,
+            total_segments=report.total_segments,
+            reason=_resolve_failure_reason(report),
+        ),
         error_type=error_type,
         error_message=error_message,
     )
+
+
+def _build_run_summary_text(
+    *,
+    status: RunStatus,
+    failed_segments: int,
+    skipped_segments: int,
+    total_segments: int,
+    reason: str | None,
+) -> str:
+    base = f"{status} | failed={failed_segments} skipped={skipped_segments} total={total_segments}"
+    if status == "COMPLETED":
+        return base
+    return f"{base} | reason={reason or 'Unknown failure'}"
+
+
+def _resolve_failure_reason(report: SubmissionFailureReport) -> str:
+    reasons = {
+        summary.message.strip()
+        for summary in report.summaries
+        if summary.status == "FAILED" and summary.message is not None and summary.message.strip()
+    }
+    if not reasons:
+        return "Unknown failure"
+    if len(reasons) == 1:
+        return next(iter(reasons))
+    return "Multiple segment failures"
 
 
 def _segment_rows(rows: list, segment_size: int):

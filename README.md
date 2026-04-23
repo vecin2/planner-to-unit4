@@ -22,7 +22,7 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 ## Failure and Retention Behavior
 
 - Submitter `run(...)` always returns a standardized outcome with `status` (`COMPLETED` or `FAILED`).
-- On failure, the outcome includes `to_payload()` fields for pipeline handoff, including `email_html_body`, `email_text_body`, and segment counts.
+- On failure, the outcome includes `to_payload()` fields for pipeline handoff, including `email_html_body`, `summary_text`, and segment counts.
 - Archiver `run(...)` also returns a standardized outcome with `status` (`COMPLETED` or `FAILED`) and `to_payload()` for notebook exit payloads.
 - On archive failure, `email_html_body` contains the exception details so it can be used directly in email activities.
 - When `failed_request_fs` is provided, failed SOAP request payloads are written under the snapshot day folder in `failed_requests/`.

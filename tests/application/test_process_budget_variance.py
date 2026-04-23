@@ -81,6 +81,7 @@ def test_process_budget_variance_submits_one_segment_for_outbound_rows() -> None
     assert outcome.is_failed() is False
     assert outcome.failed_segments == 0
     assert outcome.email_html_body == ""
+    assert outcome.summary_text == "COMPLETED | failed=0 skipped=0 total=1"
     runner.assert_segments_sent(expected_segments)
     runner.assert_segments_submitted(expected_submissions)
 
@@ -121,6 +122,7 @@ def test_process_budget_variance_submits_multiple_segments_when_segment_size_is_
 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
     assert outcome.status == "COMPLETED"
+    assert outcome.summary_text == "COMPLETED | failed=0 skipped=0 total=2"
     runner.assert_segments_sent(expected_segments)
     runner.assert_segments_submitted(expected_submissions)
 
@@ -217,14 +219,10 @@ def test_process_budget_variance_records_failed_segment_when_log_items_present()
     assert outcome.is_success() is False
     assert outcome.is_failed() is True
     assert "<html lang='en'>" in outcome.email_html_body
-    summary = outcome.failure_summary_text
-    assert "pipeline_run_id=fabric-run-789" in summary
-    assert "failed_segments=1" in summary
-    assert "segment=1 records=1 range=1-1 status=Failed http_status=200" in summary
-    assert f"message={normalized_failure_message}" in summary
     assert (
-        "column=dim_3 message=B102397 is not a legal RESNO affected_records=1 record_no_samples=?"
-    ) in summary
+        outcome.summary_text == "FAILED | failed=1 skipped=0 total=1 "
+        f"| reason={normalized_failure_message}"
+    )
 
     runner.assert_segments_failed(expected_failures)
 
@@ -269,11 +267,9 @@ def test_process_budget_variance_records_failed_segment_for_non_200() -> None:
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
-    summary = outcome.failure_summary_text
-    assert "pipeline_run_id=fabric-run-987" in summary
-    assert "failed_segments=1" in summary
-    assert "segment=1 records=1 range=1-1 status=Failed http_status=500" in summary
-    assert "message=Something went wrong." in summary
+    assert (
+        outcome.summary_text == "FAILED | failed=1 skipped=0 total=1 | reason=Something went wrong."
+    )
 
     runner.assert_segments_failed(expected_failures)
 
@@ -319,10 +315,7 @@ def test_process_budget_variance_records_failed_segment_on_exception() -> None:
     assert outcome.status == "FAILED"
     assert outcome.error_type == "SoapSubmissionError"
     assert outcome.error_message == "network timeout"
-    summary = outcome.failure_summary_text
-    assert "pipeline_run_id=fabric-run-654" in summary
-    assert "failed_segments=1" in summary
-    assert "segment=1 records=1 range=1-1 status=Failed message=network timeout" in summary
+    assert outcome.summary_text == "FAILED | failed=1 skipped=0 total=1 | reason=network timeout"
 
     runner.assert_segments_failed(expected_failures)
 
@@ -355,11 +348,7 @@ def test_process_budget_variance_marks_remaining_segments_as_skipped_on_exceptio
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
-    summary = outcome.failure_summary_text
-    assert "failed_segments=1" in summary
-    assert "skipped_segments=2" in summary
-    assert "segment=2 records=1 range=2-2 status=Skipped" in summary
-    assert "segment=3 records=1 range=3-3 status=Skipped" in summary
+    assert outcome.summary_text == "FAILED | failed=1 skipped=2 total=3 | reason=network timeout"
 
 
 def test_process_budget_variance_failure_summary_includes_all_failed_segments() -> None:
@@ -390,12 +379,63 @@ def test_process_budget_variance_failure_summary_includes_all_failed_segments() 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
-    summary = outcome.failure_summary_text
-    assert "failed_segments=6" in summary
-    assert "segment=1" in summary
-    assert "segment=6" in summary
-    assert "segment=5" in summary
-    assert "... +1 more" not in summary
+    assert outcome.summary_text == "FAILED | failed=6 skipped=0 total=6 | reason=bad row"
+
+
+def test_process_budget_variance_summary_uses_multiple_reason_for_mixed_failures() -> None:
+    rows = [make_row(record_no=i, description=f"Row{i}", amount=i) for i in range(1, 3)]
+
+    run_id = "fabric-run-557"
+    version = "ADJ"
+    batch = "WKD"
+    snapshot_path = "snapshot-557"
+    submitted_at = datetime(2026, 4, 12, 16, 15, 0)
+
+    class SequencedPlanningService:
+        def __init__(self) -> None:
+            self._responses = [
+                {
+                    "order_no": None,
+                    "http_status": 500,
+                    "message": "Something went wrong.",
+                },
+                {
+                    "order_no": None,
+                    "http_status": 400,
+                    "message": "Validation errors returned in postback log items.",
+                    "resolved_errors": [
+                        ResolvedPostbackError(
+                            row_index_1_based=1,
+                            column="dim_2",
+                            message="Dim2 cannot be null",
+                            failed_row={"record_no": 2},
+                        )
+                    ],
+                },
+            ]
+            self._index = 0
+
+        def send_segment(self, segment: list[dict]) -> dict[str, str | int | None | list]:
+            response = self._responses[self._index]
+            self._index += 1
+            return dict(response)
+
+    runner = ApplicationRunner.build(
+        rows=rows,
+        version=version,
+        batch=batch,
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=SequencedPlanningService(),
+    )
+
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert outcome.status == "FAILED"
+    assert (
+        outcome.summary_text
+        == "FAILED | failed=2 skipped=0 total=2 | reason=Multiple segment failures"
+    )
 
 
 def test_process_budget_variance_failure_summary_does_not_truncate_message() -> None:
@@ -426,9 +466,7 @@ def test_process_budget_variance_failure_summary_does_not_truncate_message() -> 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
-    summary = outcome.failure_summary_text
-    assert "x" * 5000 in summary
-    assert "(truncated)" not in summary
+    assert outcome.summary_text == f"FAILED | failed=1 skipped=0 total=1 | reason={'x' * 5000}"
 
 
 def test_process_budget_variance_applies_retention_when_configured() -> None:
