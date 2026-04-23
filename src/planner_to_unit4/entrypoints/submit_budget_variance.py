@@ -40,7 +40,8 @@ def main(
     config: dict[str, object],
     log_fn: Callable[[str], None],
     budget_variance_rows_filter: Callable[[Any], Any] | None = None,
-    failed_request_fs: Any | None = None,
+    artifact_fs: Any | None = None,
+    report_max_sample_rows: int = 10,
 ) -> SubmitBudgetVariance:
     """Create a configured budget-variance submitter.
 
@@ -54,9 +55,11 @@ def main(
     - ``budget_variance_rows_filter``: optional callable that receives a Spark
       DataFrame and must return a Spark DataFrame. If omitted, rows are ordered
       by ``record_no``.
-    - ``failed_request_fs``: optional filesystem object with ``mkdirs`` and
-      ``put`` methods. When provided, failed SOAP requests are saved next to the
-      archived snapshot path under ``failed_requests``.
+    - ``artifact_fs``: optional filesystem object with ``mkdirs`` and
+      ``put`` methods. When provided, failed SOAP requests and HTML
+      reports are saved next to the archived snapshot path.
+    - ``report_max_sample_rows``: max number of failed rows to include
+      as samples in failure reports (default: 10)
 
     Config keys (validated by ``validate_config``):
     Required
@@ -107,7 +110,8 @@ def main(
         log_fn=log_fn,
         max_segment_size=validated["max_segment_size"],
         segment_monitor_retention_days=validated["segment_monitor_retention_days"],
-        failed_request_fs=failed_request_fs,
+        report_max_sample_rows=report_max_sample_rows,
+        artifact_fs=artifact_fs,
     )
 
 

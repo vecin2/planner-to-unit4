@@ -30,6 +30,7 @@ class SubmissionRunOutcome:
     snapshot_path: str
     status: RunStatus
     email_html_body: str
+    report_html_path: str | None
     failed_segments: int
     skipped_segments: int
     total_segments: int
@@ -49,6 +50,7 @@ class SubmissionRunOutcome:
             "pipeline_run_id": self.pipeline_run_id,
             "snapshot_path": self.snapshot_path,
             "email_html_body": self.email_html_body,
+            "report_html_path": self.report_html_path,
             "failed_segments": self.failed_segments,
             "skipped_segments": self.skipped_segments,
             "total_segments": self.total_segments,
@@ -58,7 +60,7 @@ class SubmissionRunOutcome:
         }
 
 
-class FailedRequestFileSystem(Protocol):
+class RunArtifactFileSystem(Protocol):
     def mkdirs(self, path: str) -> None: ...
 
     def put(self, path: str, text: str, overwrite: bool) -> None: ...
@@ -72,7 +74,8 @@ class SubmitBudgetVariance:
     log_fn: Callable[[str], None]
     max_segment_size: int = 15000
     segment_monitor_retention_days: int | None = None
-    failed_request_fs: FailedRequestFileSystem | None = None
+    report_max_sample_rows: int = 10
+    artifact_fs: RunArtifactFileSystem | None = None
     clock: Callable[[], datetime] = datetime.utcnow
 
     def run(self, pipeline_run_id: str, snapshot_path: str) -> SubmissionRunOutcome:
@@ -96,7 +99,10 @@ class SubmitBudgetVariance:
             f"items={len(items)} segments={len(segments)} max_segment_size={self.max_segment_size}"
         )
 
-        report_builder = SubmissionFailureReportBuilder(segments=segments)
+        report_builder = SubmissionFailureReportBuilder(
+            segments=segments,
+            row_sample_limit=self.report_max_sample_rows,
+        )
 
         for segment_index, segment in enumerate(segments, start=1):
             self.log_fn(f"Submitting segment {segment_index}/{len(segments)} size={len(segment)}")
@@ -129,12 +135,13 @@ class SubmitBudgetVariance:
                     now_utc=failure_time_utc,
                 )
                 self.log_fn(f"Recorded failed segment: segment_index={segment_index} error={exc}")
-                return _build_failed_outcome(
+                return self._build_failed_outcome(
                     pipeline_run_id=pipeline_run_id,
                     snapshot_path=snapshot_path,
                     report=report_builder.build_failure_report(pipeline_run_id=pipeline_run_id),
                     error_type=type(exc).__name__,
                     error_message=str(exc),
+                    now_utc=failure_time_utc,
                 )
 
             order_no = _as_optional_str(result.get("order_no"))
@@ -204,12 +211,13 @@ class SubmitBudgetVariance:
         )
 
         if report_builder.has_failures():
-            return _build_failed_outcome(
+            return self._build_failed_outcome(
                 pipeline_run_id=pipeline_run_id,
                 snapshot_path=snapshot_path,
                 report=report_builder.build_failure_report(pipeline_run_id=pipeline_run_id),
                 error_type="SEGMENT_FAILURE",
                 error_message="One or more segments failed",
+                now_utc=self.clock(),
             )
 
         return SubmissionRunOutcome(
@@ -217,6 +225,7 @@ class SubmitBudgetVariance:
             snapshot_path=snapshot_path,
             status="COMPLETED",
             email_html_body="",
+            report_html_path=None,
             failed_segments=0,
             skipped_segments=0,
             total_segments=len(segments),
@@ -240,7 +249,7 @@ class SubmitBudgetVariance:
         request_payload: object,
         now_utc: datetime,
     ) -> None:
-        if self.failed_request_fs is None:
+        if self.artifact_fs is None:
             return
         if not isinstance(request_payload, str) or not request_payload:
             return
@@ -254,8 +263,8 @@ class SubmitBudgetVariance:
         file_path = f"{folder_path}/{file_name}"
 
         try:
-            self.failed_request_fs.mkdirs(folder_path)
-            self.failed_request_fs.put(file_path, request_payload, True)
+            self.artifact_fs.mkdirs(folder_path)
+            self.artifact_fs.put(file_path, request_payload, True)
             self.log_fn(
                 f"Saved failed SOAP request payload: segment_index={segment_index} path={file_path}"
             )
@@ -264,37 +273,74 @@ class SubmitBudgetVariance:
                 f"Failed request payload warning: segment_index={segment_index} error={exc}"
             )
 
+    def _save_artifact_report(
+        self,
+        *,
+        snapshot_path: str,
+        pipeline_run_id: str,
+        html_body: str,
+        now_utc: datetime,
+    ) -> str | None:
+        if self.artifact_fs is None:
+            return None
+        if not html_body:
+            return None
 
-def _build_failed_outcome(
-    *,
-    pipeline_run_id: str,
-    snapshot_path: str,
-    report: SubmissionFailureReport,
-    error_type: str,
-    error_message: str,
-) -> SubmissionRunOutcome:
-    notification = render_failure_notification(
-        report=report,
-        snapshot_path=snapshot_path,
-    )
-    return SubmissionRunOutcome(
-        pipeline_run_id=pipeline_run_id,
-        snapshot_path=snapshot_path,
-        status="FAILED",
-        email_html_body=notification.html_body,
-        failed_segments=report.failed_segments,
-        skipped_segments=report.skipped_segments,
-        total_segments=report.total_segments,
-        summary_text=_build_run_summary_text(
+        folder_path = _build_failed_reports_path(snapshot_path)
+        file_name = _build_report_file_name(
+            pipeline_run_id=pipeline_run_id,
+            now_utc=now_utc,
+        )
+        file_path = f"{folder_path}/{file_name}"
+
+        try:
+            self.artifact_fs.mkdirs(folder_path)
+            self.artifact_fs.put(file_path, html_body, True)
+            self.log_fn(f"Saved failure report: path={file_path}")
+            return file_path
+        except Exception as exc:  # noqa: BLE001 - report save should not block submission
+            self.log_fn(f"Failed report save warning: error={exc}")
+            return None
+
+    def _build_failed_outcome(
+        self,
+        *,
+        pipeline_run_id: str,
+        snapshot_path: str,
+        report: SubmissionFailureReport,
+        error_type: str,
+        error_message: str,
+        now_utc: datetime,
+    ) -> SubmissionRunOutcome:
+        notification = render_failure_notification(
+            report=report,
+            snapshot_path=snapshot_path,
+        )
+        report_html_path = self._save_artifact_report(
+            snapshot_path=snapshot_path,
+            pipeline_run_id=pipeline_run_id,
+            html_body=notification.html_body,
+            now_utc=now_utc,
+        )
+        return SubmissionRunOutcome(
+            pipeline_run_id=pipeline_run_id,
+            snapshot_path=snapshot_path,
             status="FAILED",
+            email_html_body=notification.html_body,
+            report_html_path=report_html_path,
             failed_segments=report.failed_segments,
             skipped_segments=report.skipped_segments,
             total_segments=report.total_segments,
-            reason=_resolve_failure_reason(report),
-        ),
-        error_type=error_type,
-        error_message=error_message,
-    )
+            summary_text=_build_run_summary_text(
+                status="FAILED",
+                failed_segments=report.failed_segments,
+                skipped_segments=report.skipped_segments,
+                total_segments=report.total_segments,
+                reason=_resolve_failure_reason(report),
+            ),
+            error_type=error_type,
+            error_message=error_message,
+        )
 
 
 def _build_run_summary_text(
@@ -343,6 +389,11 @@ def _build_failed_requests_path(snapshot_path: str) -> str:
     return f"{base_path}/failed_requests"
 
 
+def _build_failed_reports_path(snapshot_path: str) -> str:
+    base_path = snapshot_path.rsplit("/", 1)[0]
+    return f"{base_path}/failed_reports"
+
+
 def _build_failed_request_file_name(
     *,
     pipeline_run_id: str,
@@ -351,6 +402,15 @@ def _build_failed_request_file_name(
 ) -> str:
     timestamp = now_utc.strftime("%H%M%S%f")
     return f"{timestamp}_{pipeline_run_id}_segment_{segment_index}.xml"
+
+
+def _build_report_file_name(
+    *,
+    pipeline_run_id: str,
+    now_utc: datetime,
+) -> str:
+    timestamp = now_utc.strftime("%Y%m%d_%H%M%S%f")
+    return f"{timestamp}_{pipeline_run_id}.html"
 
 
 def _extract_resolved_errors(raw_resolved_errors: object) -> list[ResolvedPostbackError]:
