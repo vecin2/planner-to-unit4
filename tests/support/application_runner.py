@@ -25,7 +25,9 @@ class ApplicationRunner:
         log_fn: Callable[[str], None] | None = None,
         planning_service: FakePlanningService | None = None,
         segment_monitor: FakeSegmentMonitor | None = None,
-        failed_request_fs: object | None = None,
+        artifact_fs: object | None = None,
+        report_max_sample_rows: int = 10,
+        artifact_save_mode: str = "on_failure",
     ) -> "ApplicationRunner":
         clock = (lambda: submitted_at) if submitted_at else None
         return cls(
@@ -38,7 +40,9 @@ class ApplicationRunner:
             log_fn=log_fn,
             planning_service=planning_service,
             segment_monitor=segment_monitor,
-            failed_request_fs=failed_request_fs,
+            artifact_fs=artifact_fs,
+            report_max_sample_rows=report_max_sample_rows,
+            artifact_save_mode=artifact_save_mode,
         )
 
     def __init__(
@@ -52,7 +56,9 @@ class ApplicationRunner:
         log_fn: Callable[[str], None] | None = None,
         planning_service: FakePlanningService | None = None,
         segment_monitor: FakeSegmentMonitor | None = None,
-        failed_request_fs: object | None = None,
+        artifact_fs: object | None = None,
+        report_max_sample_rows: int = 10,
+        artifact_save_mode: str = "on_failure",
     ) -> None:
         budget_variance_reader = FakeBudgetVarianceReader()
         budget_variance_reader.set_rows(rows)
@@ -67,7 +73,9 @@ class ApplicationRunner:
         self.segment_monitor = segment_monitor or FakeSegmentMonitor()
         self.clock = clock or datetime.utcnow
         self.log_fn = log_fn or (lambda _message: None)
-        self.failed_request_fs = failed_request_fs
+        self.artifact_fs = artifact_fs
+        self.report_max_sample_rows = report_max_sample_rows
+        self.artifact_save_mode = artifact_save_mode
 
     def run_process_budget_variance(self, pipeline_run_id: str, snapshot_path: str):
         submitter = SubmitBudgetVariance(
@@ -77,7 +85,9 @@ class ApplicationRunner:
             log_fn=self.log_fn,
             max_segment_size=self.max_segment_size,
             segment_monitor_retention_days=self.segment_monitor_retention_days,
-            failed_request_fs=self.failed_request_fs,
+            report_max_sample_rows=self.report_max_sample_rows,
+            artifact_save_mode=self.artifact_save_mode,
+            artifact_fs=self.artifact_fs,
             clock=self.clock,
         )
         return submitter.run(

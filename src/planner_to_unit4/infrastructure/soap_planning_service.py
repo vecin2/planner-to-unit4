@@ -50,9 +50,10 @@ class SoapPlanningService(PlanningService):
             password=self.password,
         )
         soap_payload = serialize_soap_envelope(envelope)
+        soap_payload_bytes = soap_payload.encode("utf-8")
         self.log_fn(
             "SOAP request: "
-            f"endpoint={self.endpoint} items={len(segment)} payload_bytes={len(soap_payload)}"
+            f"endpoint={self.endpoint} items={len(segment)} payload_bytes={len(soap_payload_bytes)}"
         )
 
         headers = {
@@ -63,7 +64,7 @@ class SoapPlanningService(PlanningService):
         try:
             response = self.http_post(
                 self.endpoint,
-                data=soap_payload,
+                data=soap_payload_bytes,
                 headers=headers,
                 timeout=self.timeout,
             )

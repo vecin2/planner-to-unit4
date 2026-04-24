@@ -34,7 +34,7 @@ def test_send_segment_returns_order_no_on_success() -> None:
 
     captured = {}
 
-    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
         captured["url"] = url
         captured["headers"] = headers
         captured["timeout"] = timeout
@@ -80,7 +80,76 @@ def test_send_segment_returns_order_no_on_success() -> None:
     )
     assert result["resolved_errors"] == []
     assert isinstance(result["request_payload"], str)
+    assert isinstance(captured["data"], bytes)
+    assert b"encoding='utf-8'" in captured["data"]
     assert "SOAPAction" in captured["headers"]
+
+
+def test_send_segment_posts_utf8_bytes_for_non_ascii_characters() -> None:
+    response_xml = """
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+       <s:Body>
+          <ObjectPostBackResponse xmlns="http://services.agresso.com/PlanningService/PlanningV201302">
+             <ObjectPostBackResult>
+                <StatusItems>
+                   <PostbackStatusItem>
+                      <Name>orderno</Name>
+                      <Value>51</Value>
+                      <Message>Transactions posted for batch processing. Order no.: 51 (PL400).</Message>
+                   </PostbackStatusItem>
+                </StatusItems>
+             </ObjectPostBackResult>
+          </ObjectPostBackResponse>
+       </s:Body>
+    </s:Envelope>
+    """
+
+    captured: dict[str, object] = {}
+
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
+        captured["data"] = data
+        captured["headers"] = headers
+        return FakeResponse(200, response_xml)
+
+    service = SoapPlanningService(
+        endpoint="https://example.test/service.svc",
+        username="user",
+        client="bi",
+        password="secret",
+        http_post=fake_post,
+        log_fn=lambda _message: None,
+    )
+
+    result = service.send_segment(
+        [
+            {
+                "record_no": 1,
+                "Client": "BI",
+                "Description": "Muñoz",
+                "Account": "1000",
+                "Dim2": "A1",
+                "Dim3": "X",
+                "Dim4": "B1",
+                "Dim6": "C1",
+                "Dim7": "ROM",
+                "Currency": "USD",
+                "Period": "202601",
+                "CurAmount": "12.25",
+                "Version": "ADJ",
+                "Batch": "WKD",
+            }
+        ]
+    )
+
+    assert result["order_no"] == "51"
+    data = captured["data"]
+    assert isinstance(data, bytes)
+    assert b"Mu\xc3\xb1oz" in data
+    assert b"Mu\xf1oz" not in data
+    assert b"encoding='utf-8'" in data
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Content-Type"] == "text/xml; charset=utf-8"
 
 
 def test_send_segment_returns_faultstring_on_non_200() -> None:
@@ -95,7 +164,7 @@ def test_send_segment_returns_faultstring_on_non_200() -> None:
     </s:Envelope>
     """
 
-    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
         return FakeResponse(500, response_xml)
 
     service = SoapPlanningService(
@@ -121,7 +190,7 @@ def test_send_segment_returns_faultstring_on_non_200() -> None:
 def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
     response_text = "not xml"
 
-    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
         return FakeResponse(500, response_text)
 
     service = SoapPlanningService(
@@ -145,7 +214,7 @@ def test_send_segment_uses_raw_response_when_non_200_not_parseable() -> None:
 
 
 def test_send_segment_raises_submission_error_with_request_payload() -> None:
-    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
         raise TimeoutError("network timeout")
 
     service = SoapPlanningService(
@@ -186,7 +255,7 @@ def test_send_segment_resolves_log_item_rows_to_failed_rows() -> None:
     </s:Envelope>
     """
 
-    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
         return FakeResponse(200, response_xml)
 
     service = SoapPlanningService(
@@ -231,7 +300,7 @@ def test_send_segment_uses_unknown_failed_row_for_out_of_range_row() -> None:
     </s:Envelope>
     """
 
-    def fake_post(url: str, data: str, headers: dict[str, str], timeout: int) -> FakeResponse:
+    def fake_post(url: str, data: bytes, headers: dict[str, str], timeout: int) -> FakeResponse:
         return FakeResponse(200, response_xml)
 
     service = SoapPlanningService(

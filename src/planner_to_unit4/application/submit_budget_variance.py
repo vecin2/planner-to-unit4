@@ -7,6 +7,7 @@ from typing import Literal
 from typing import Protocol
 
 from planner_to_unit4.application.failure_notification_renderer import render_failure_notification
+from planner_to_unit4.application.failure_notification_renderer import render_report_html
 from planner_to_unit4.application.submission_failure_report import (
     SubmissionFailureReport,
     SubmissionFailureReportBuilder,
@@ -21,6 +22,9 @@ from planner_to_unit4.infrastructure.soap_planning_service import SoapSubmission
 
 
 RunStatus = Literal["COMPLETED", "FAILED"]
+ArtifactSaveMode = Literal["on_failure", "always", "never"]
+RequestArtifactState = Literal["submitted", "failed"]
+ReportArtifactState = Literal["completed", "failed"]
 LOG_ITEMS_FAILURE_MESSAGE = "Validation errors returned in postback log items."
 
 
@@ -75,6 +79,7 @@ class SubmitBudgetVariance:
     max_segment_size: int = 15000
     segment_monitor_retention_days: int | None = None
     report_max_sample_rows: int = 10
+    artifact_save_mode: ArtifactSaveMode = "on_failure"
     artifact_fs: RunArtifactFileSystem | None = None
     clock: Callable[[], datetime] = datetime.utcnow
 
@@ -127,12 +132,13 @@ class SubmitBudgetVariance:
                     submitted_at_utc=failure_time_utc,
                 )
                 request_payload = _extract_request_payload(exc)
-                self._save_failed_request_payload(
+                self._save_request_payload(
                     snapshot_path=snapshot_path,
                     pipeline_run_id=pipeline_run_id,
                     segment_index=segment_index,
                     request_payload=request_payload,
                     now_utc=failure_time_utc,
+                    is_failure=True,
                 )
                 self.log_fn(f"Recorded failed segment: segment_index={segment_index} error={exc}")
                 return self._build_failed_outcome(
@@ -177,12 +183,13 @@ class SubmitBudgetVariance:
                     message=normalized_message,
                     resolved_errors=resolved_errors,
                 )
-                self._save_failed_request_payload(
+                self._save_request_payload(
                     snapshot_path=snapshot_path,
                     pipeline_run_id=pipeline_run_id,
                     segment_index=segment_index,
                     request_payload=result.get("request_payload"),
                     now_utc=self.clock(),
+                    is_failure=True,
                 )
                 continue
 
@@ -204,6 +211,14 @@ class SubmitBudgetVariance:
                 message=message,
                 http_status=http_status,
             )
+            self._save_request_payload(
+                snapshot_path=snapshot_path,
+                pipeline_run_id=pipeline_run_id,
+                segment_index=segment_index,
+                request_payload=result.get("request_payload"),
+                now_utc=self.clock(),
+                is_failure=False,
+            )
 
         self.log_fn(
             "Completed budget variance submission: "
@@ -220,12 +235,28 @@ class SubmitBudgetVariance:
                 now_utc=self.clock(),
             )
 
+        report_html_path = None
+        if self.artifact_save_mode == "always":
+            generated_at_utc = self.clock()
+            report_html = render_report_html(
+                report=report_builder.build_failure_report(pipeline_run_id=pipeline_run_id),
+                snapshot_path=snapshot_path,
+                report_generated_at_utc=generated_at_utc,
+            )
+            report_html_path = self._save_artifact_report(
+                snapshot_path=snapshot_path,
+                pipeline_run_id=pipeline_run_id,
+                html_body=report_html,
+                now_utc=generated_at_utc,
+                is_failure=False,
+            )
+
         return SubmissionRunOutcome(
             pipeline_run_id=pipeline_run_id,
             snapshot_path=snapshot_path,
             status="COMPLETED",
             email_html_body="",
-            report_html_path=None,
+            report_html_path=report_html_path,
             failed_segments=0,
             skipped_segments=0,
             total_segments=len(segments),
@@ -240,7 +271,7 @@ class SubmitBudgetVariance:
             error_message="",
         )
 
-    def _save_failed_request_payload(
+    def _save_request_payload(
         self,
         *,
         snapshot_path: str,
@@ -248,17 +279,22 @@ class SubmitBudgetVariance:
         segment_index: int,
         request_payload: object,
         now_utc: datetime,
+        is_failure: bool,
     ) -> None:
+        if not self._should_save_artifact(is_failure=is_failure):
+            return
         if self.artifact_fs is None:
             return
         if not isinstance(request_payload, str) or not request_payload:
             return
 
-        folder_path = _build_failed_requests_path(snapshot_path)
-        file_name = _build_failed_request_file_name(
+        state: RequestArtifactState = "failed" if is_failure else "submitted"
+        folder_path = _build_requests_path(snapshot_path)
+        file_name = _build_request_file_name(
             pipeline_run_id=pipeline_run_id,
             segment_index=segment_index,
             now_utc=now_utc,
+            state=state,
         )
         file_path = f"{folder_path}/{file_name}"
 
@@ -266,11 +302,13 @@ class SubmitBudgetVariance:
             self.artifact_fs.mkdirs(folder_path)
             self.artifact_fs.put(file_path, request_payload, True)
             self.log_fn(
-                f"Saved failed SOAP request payload: segment_index={segment_index} path={file_path}"
+                "Saved SOAP request payload: "
+                f"segment_index={segment_index} state={state} path={file_path}"
             )
         except Exception as exc:  # noqa: BLE001 - payload save should not block submission
             self.log_fn(
-                f"Failed request payload warning: segment_index={segment_index} error={exc}"
+                "Request payload save warning: "
+                f"segment_index={segment_index} state={state} error={exc}"
             )
 
     def _save_artifact_report(
@@ -280,26 +318,31 @@ class SubmitBudgetVariance:
         pipeline_run_id: str,
         html_body: str,
         now_utc: datetime,
+        is_failure: bool,
     ) -> str | None:
+        if not self._should_save_artifact(is_failure=is_failure):
+            return None
         if self.artifact_fs is None:
             return None
         if not html_body:
             return None
 
-        folder_path = _build_failed_reports_path(snapshot_path)
+        state: ReportArtifactState = "failed" if is_failure else "completed"
+        folder_path = _build_reports_path(snapshot_path)
         file_name = _build_report_file_name(
             pipeline_run_id=pipeline_run_id,
             now_utc=now_utc,
+            state=state,
         )
         file_path = f"{folder_path}/{file_name}"
 
         try:
             self.artifact_fs.mkdirs(folder_path)
             self.artifact_fs.put(file_path, html_body, True)
-            self.log_fn(f"Saved failure report: path={file_path}")
+            self.log_fn(f"Saved run report: state={state} path={file_path}")
             return file_path
         except Exception as exc:  # noqa: BLE001 - report save should not block submission
-            self.log_fn(f"Failed report save warning: error={exc}")
+            self.log_fn(f"Report save warning: state={state} error={exc}")
             return None
 
     def _build_failed_outcome(
@@ -315,12 +358,14 @@ class SubmitBudgetVariance:
         notification = render_failure_notification(
             report=report,
             snapshot_path=snapshot_path,
+            report_generated_at_utc=now_utc,
         )
         report_html_path = self._save_artifact_report(
             snapshot_path=snapshot_path,
             pipeline_run_id=pipeline_run_id,
             html_body=notification.html_body,
             now_utc=now_utc,
+            is_failure=True,
         )
         return SubmissionRunOutcome(
             pipeline_run_id=pipeline_run_id,
@@ -341,6 +386,13 @@ class SubmitBudgetVariance:
             error_type=error_type,
             error_message=error_message,
         )
+
+    def _should_save_artifact(self, *, is_failure: bool) -> bool:
+        if self.artifact_save_mode == "never":
+            return False
+        if self.artifact_save_mode == "always":
+            return True
+        return is_failure
 
 
 def _build_run_summary_text(
@@ -384,33 +436,35 @@ def _extract_request_payload(exc: Exception) -> str | None:
     return None
 
 
-def _build_failed_requests_path(snapshot_path: str) -> str:
+def _build_requests_path(snapshot_path: str) -> str:
     base_path = snapshot_path.rsplit("/", 1)[0]
-    return f"{base_path}/failed_requests"
+    return f"{base_path}/requests"
 
 
-def _build_failed_reports_path(snapshot_path: str) -> str:
+def _build_reports_path(snapshot_path: str) -> str:
     base_path = snapshot_path.rsplit("/", 1)[0]
-    return f"{base_path}/failed_reports"
+    return f"{base_path}/reports"
 
 
-def _build_failed_request_file_name(
+def _build_request_file_name(
     *,
     pipeline_run_id: str,
     segment_index: int,
     now_utc: datetime,
+    state: RequestArtifactState,
 ) -> str:
     timestamp = now_utc.strftime("%H%M%S%f")
-    return f"{timestamp}_{pipeline_run_id}_segment_{segment_index}.xml"
+    return f"{timestamp}_{pipeline_run_id}_segment_{segment_index}_{state}.xml"
 
 
 def _build_report_file_name(
     *,
     pipeline_run_id: str,
     now_utc: datetime,
+    state: ReportArtifactState,
 ) -> str:
     timestamp = now_utc.strftime("%Y%m%d_%H%M%S%f")
-    return f"{timestamp}_{pipeline_run_id}.html"
+    return f"{timestamp}_{pipeline_run_id}_{state}.html"
 
 
 def _extract_resolved_errors(raw_resolved_errors: object) -> list[ResolvedPostbackError]:

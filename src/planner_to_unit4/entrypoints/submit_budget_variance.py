@@ -10,6 +10,9 @@ from planner_to_unit4.infrastructure.budget_variance_items_provider import (
 from planner_to_unit4.infrastructure.spark_budget_variance_reader import (
     SparkBudgetVarianceReader,
 )
+from planner_to_unit4.infrastructure.retrying_planning_service import (
+    RetryingPlanningService,
+)
 from planner_to_unit4.infrastructure.spark_segment_monitor import SparkSegmentMonitor
 from planner_to_unit4.infrastructure.soap_planning_service import SoapPlanningService
 
@@ -29,6 +32,9 @@ OPTIONAL_DEFAULTS: dict[str, Any] = {
     "max_segment_size": 12000,
     "segment_monitor_retention_days": None,
     "timeout": 90,
+    "report_max_sample_rows": 10,
+    "artifact_save_mode": "on_failure",
+    "soap_retry_retries": 0,
 }
 
 ALLOWED_KEYS = REQUIRED_KEYS | set(OPTIONAL_DEFAULTS.keys())
@@ -41,7 +47,6 @@ def main(
     log_fn: Callable[[str], None],
     budget_variance_rows_filter: Callable[[Any], Any] | None = None,
     artifact_fs: Any | None = None,
-    report_max_sample_rows: int = 10,
 ) -> SubmitBudgetVariance:
     """Create a configured budget-variance submitter.
 
@@ -56,10 +61,8 @@ def main(
       DataFrame and must return a Spark DataFrame. If omitted, rows are ordered
       by ``record_no``.
     - ``artifact_fs``: optional filesystem object with ``mkdirs`` and
-      ``put`` methods. When provided, failed SOAP requests and HTML
-      reports are saved next to the archived snapshot path.
-    - ``report_max_sample_rows``: max number of failed rows to include
-      as samples in failure reports (default: 10)
+      ``put`` methods. Artifact write behavior is controlled by
+      ``artifact_save_mode`` for request/report artifacts.
 
     Config keys (validated by ``validate_config``):
     Required
@@ -76,6 +79,10 @@ def main(
     - ``max_segment_size`` (int, default ``12000``)
     - ``timeout`` (int, default ``90``)
     - ``segment_monitor_retention_days`` (int | None, default ``None``)
+    - ``report_max_sample_rows`` (int, default ``10``)
+    - ``artifact_save_mode`` (str, default ``on_failure``; allowed
+      ``on_failure``, ``always``, ``never``)
+    - ``soap_retry_retries`` (int, default ``0``; retries on exceptions)
     """
     import requests
 
@@ -90,13 +97,18 @@ def main(
         version=validated["version"],
         batch=validated["batch"],
     )
-    planning_service = SoapPlanningService(
+    base_planning_service = SoapPlanningService(
         endpoint=validated["endpoint"],
         username=validated["username"],
         client=validated["client"],
         password=validated["password"],
         http_post=requests.post,
         timeout=validated["timeout"],
+        log_fn=log_fn,
+    )
+    planning_service = RetryingPlanningService(
+        service=base_planning_service,
+        retries=validated["soap_retry_retries"],
         log_fn=log_fn,
     )
     segment_monitor = SparkSegmentMonitor(
@@ -110,7 +122,8 @@ def main(
         log_fn=log_fn,
         max_segment_size=validated["max_segment_size"],
         segment_monitor_retention_days=validated["segment_monitor_retention_days"],
-        report_max_sample_rows=report_max_sample_rows,
+        report_max_sample_rows=validated["report_max_sample_rows"],
+        artifact_save_mode=validated["artifact_save_mode"],
         artifact_fs=artifact_fs,
     )
 
@@ -123,7 +136,10 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     - missing required keys are rejected
     - required keys must be strings
     - ``max_segment_size`` and ``timeout`` must be integers > 0
+    - ``report_max_sample_rows`` must be integer > 0
     - ``segment_monitor_retention_days`` is optional and must be integer > 0
+    - ``artifact_save_mode`` must be one of ``on_failure``, ``always``, ``never``
+    - ``soap_retry_retries`` must be integer >= 0
 
     Raises ``ValueError`` with a structured summary when validation fails.
     """
@@ -131,6 +147,7 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     unknown_keys = sorted(set(config.keys()) - ALLOWED_KEYS)
     invalid_types: dict[str, str] = {}
     invalid_ranges: dict[str, object] = {}
+    invalid_values: dict[str, object] = {}
 
     for key in sorted(REQUIRED_KEYS):
         if key not in config:
@@ -151,6 +168,15 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     elif timeout <= 0:
         invalid_ranges["timeout"] = timeout
 
+    report_max_sample_rows = config.get(
+        "report_max_sample_rows",
+        OPTIONAL_DEFAULTS["report_max_sample_rows"],
+    )
+    if not _is_int(report_max_sample_rows):
+        invalid_types["report_max_sample_rows"] = type(report_max_sample_rows).__name__
+    elif report_max_sample_rows <= 0:
+        invalid_ranges["report_max_sample_rows"] = report_max_sample_rows
+
     segment_monitor_retention_days = config.get(
         "segment_monitor_retention_days",
         OPTIONAL_DEFAULTS["segment_monitor_retention_days"],
@@ -163,13 +189,32 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
         elif segment_monitor_retention_days <= 0:
             invalid_ranges["segment_monitor_retention_days"] = segment_monitor_retention_days
 
-    if missing_keys or unknown_keys or invalid_types or invalid_ranges:
+    artifact_save_mode = config.get(
+        "artifact_save_mode",
+        OPTIONAL_DEFAULTS["artifact_save_mode"],
+    )
+    if not isinstance(artifact_save_mode, str):
+        invalid_types["artifact_save_mode"] = type(artifact_save_mode).__name__
+    elif artifact_save_mode not in {"on_failure", "always", "never"}:
+        invalid_values["artifact_save_mode"] = artifact_save_mode
+
+    soap_retry_retries = config.get(
+        "soap_retry_retries",
+        OPTIONAL_DEFAULTS["soap_retry_retries"],
+    )
+    if not _is_int(soap_retry_retries):
+        invalid_types["soap_retry_retries"] = type(soap_retry_retries).__name__
+    elif soap_retry_retries < 0:
+        invalid_ranges["soap_retry_retries"] = soap_retry_retries
+
+    if missing_keys or unknown_keys or invalid_types or invalid_ranges or invalid_values:
         raise ValueError(
             "Invalid config: "
             f"missing keys={missing_keys}; "
             f"unknown keys={unknown_keys}; "
             f"invalid types={invalid_types}; "
-            f"invalid ranges={invalid_ranges}"
+            f"invalid ranges={invalid_ranges}; "
+            f"invalid values={invalid_values}"
         )
 
     return {
@@ -184,6 +229,9 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
         "max_segment_size": max_segment_size,
         "segment_monitor_retention_days": segment_monitor_retention_days,
         "timeout": timeout,
+        "report_max_sample_rows": report_max_sample_rows,
+        "artifact_save_mode": artifact_save_mode,
+        "soap_retry_retries": soap_retry_retries,
     }
 
 

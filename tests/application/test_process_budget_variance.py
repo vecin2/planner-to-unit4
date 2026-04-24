@@ -531,7 +531,7 @@ def test_process_budget_variance_continues_when_retention_fails() -> None:
     assert runner.segment_monitor.submissions
 
 
-class FakeFailedRequestFileSystem:
+class FakeArtifactFileSystem:
     def __init__(self) -> None:
         self.mkdirs_calls: list[str] = []
         self.put_calls: list[tuple[str, str, bool]] = []
@@ -557,7 +557,7 @@ def test_process_budget_variance_saves_failed_request_payload_for_failed_segment
             "request_payload": "<soap>request</soap>",
         }
     )
-    failed_request_fs = FakeFailedRequestFileSystem()
+    artifact_fs = FakeArtifactFileSystem()
 
     runner = ApplicationRunner.build(
         rows=[row1],
@@ -566,21 +566,25 @@ def test_process_budget_variance_saves_failed_request_payload_for_failed_segment
         max_segment_size=1,
         submitted_at=submitted_at,
         planning_service=planning_service,
-        failed_request_fs=failed_request_fs,
+        artifact_fs=artifact_fs,
     )
 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
 
-    assert failed_request_fs.mkdirs_calls == [
-        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/failed_requests"
+    assert artifact_fs.mkdirs_calls == [
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/requests",
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/reports",
     ]
-    assert len(failed_request_fs.put_calls) == 1
-    file_path, payload, overwrite = failed_request_fs.put_calls[0]
-    assert file_path.endswith("_fabric-run-700_segment_1.xml")
+    assert len(artifact_fs.put_calls) == 2
+    file_path, payload, overwrite = artifact_fs.put_calls[0]
+    assert file_path.endswith("_fabric-run-700_segment_1_failed.xml")
     assert payload == "<soap>request</soap>"
     assert overwrite is True
+    report_path, _report_payload, report_overwrite = artifact_fs.put_calls[1]
+    assert report_path.endswith("_fabric-run-700_failed.html")
+    assert report_overwrite is True
 
 
 def test_process_budget_variance_saves_failed_request_payload_on_exception() -> None:
@@ -589,7 +593,7 @@ def test_process_budget_variance_saves_failed_request_payload_on_exception() -> 
     run_id = "fabric-run-701"
     snapshot_path = "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/plan_data_sample.json"
     submitted_at = datetime(2026, 4, 12, 17, 30, 0)
-    failed_request_fs = FakeFailedRequestFileSystem()
+    artifact_fs = FakeArtifactFileSystem()
 
     class RaisingPlanningService:
         def send_segment(self, segment: list[dict]) -> dict[str, str | int | None]:
@@ -605,18 +609,102 @@ def test_process_budget_variance_saves_failed_request_payload_on_exception() -> 
         max_segment_size=1,
         submitted_at=submitted_at,
         planning_service=RaisingPlanningService(),
-        failed_request_fs=failed_request_fs,
+        artifact_fs=artifact_fs,
     )
 
     outcome = runner.run_process_budget_variance(run_id, snapshot_path)
 
     assert outcome.status == "FAILED"
 
-    assert failed_request_fs.mkdirs_calls == [
-        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/failed_requests"
+    assert artifact_fs.mkdirs_calls == [
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/requests",
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/reports",
     ]
-    assert len(failed_request_fs.put_calls) == 1
-    file_path, payload, overwrite = failed_request_fs.put_calls[0]
-    assert file_path.endswith("_fabric-run-701_segment_1.xml")
+    assert len(artifact_fs.put_calls) == 2
+    file_path, payload, overwrite = artifact_fs.put_calls[0]
+    assert file_path.endswith("_fabric-run-701_segment_1_failed.xml")
     assert payload == "<soap>request-exception</soap>"
     assert overwrite is True
+
+
+def test_process_budget_variance_artifact_save_mode_always_saves_success_artifacts() -> None:
+    row1 = make_row(record_no=1, description="Row1", amount=10)
+
+    run_id = "fabric-run-702"
+    snapshot_path = "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/plan_data_sample.json"
+    submitted_at = datetime(2026, 4, 12, 18, 0, 0)
+    planning_service = FakePlanningService(
+        response={
+            "order_no": "ok-order-1",
+            "http_status": 200,
+            "message": None,
+            "request_payload": "<soap>request-success</soap>",
+        }
+    )
+    artifact_fs = FakeArtifactFileSystem()
+
+    runner = ApplicationRunner.build(
+        rows=[row1],
+        version="ADJ",
+        batch="WKD",
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=planning_service,
+        artifact_fs=artifact_fs,
+        artifact_save_mode="always",
+    )
+
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert outcome.status == "COMPLETED"
+    assert outcome.report_html_path is not None
+    assert outcome.report_html_path.endswith(".html")
+
+    assert artifact_fs.mkdirs_calls == [
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/requests",
+        "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/reports",
+    ]
+    assert len(artifact_fs.put_calls) == 2
+    request_path, request_payload, request_overwrite = artifact_fs.put_calls[0]
+    assert request_path.endswith("_fabric-run-702_segment_1_submitted.xml")
+    assert request_payload == "<soap>request-success</soap>"
+    assert request_overwrite is True
+    report_path, report_payload, report_overwrite = artifact_fs.put_calls[1]
+    assert report_path.endswith("_fabric-run-702_completed.html")
+    assert "Planner Upload Result" in report_payload
+    assert report_overwrite is True
+
+
+def test_process_budget_variance_artifact_save_mode_never_skips_artifacts() -> None:
+    row1 = make_row(record_no=1, description="Row1", amount=10)
+
+    run_id = "fabric-run-703"
+    snapshot_path = "Files/FPA_Ingestion_Test/archive/yyyy=2026/mm=04/dd=20/plan_data_sample.json"
+    submitted_at = datetime(2026, 4, 12, 18, 30, 0)
+    planning_service = FakePlanningService(
+        response={
+            "order_no": None,
+            "http_status": 400,
+            "message": "bad row",
+            "request_payload": "<soap>request</soap>",
+        }
+    )
+    artifact_fs = FakeArtifactFileSystem()
+
+    runner = ApplicationRunner.build(
+        rows=[row1],
+        version="ADJ",
+        batch="WKD",
+        max_segment_size=1,
+        submitted_at=submitted_at,
+        planning_service=planning_service,
+        artifact_fs=artifact_fs,
+        artifact_save_mode="never",
+    )
+
+    outcome = runner.run_process_budget_variance(run_id, snapshot_path)
+
+    assert outcome.status == "FAILED"
+    assert outcome.report_html_path is None
+    assert artifact_fs.mkdirs_calls == []
+    assert artifact_fs.put_calls == []
