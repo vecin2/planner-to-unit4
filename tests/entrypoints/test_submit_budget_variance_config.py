@@ -22,6 +22,9 @@ def test_validate_config_applies_defaults() -> None:
     assert validated["max_segment_size"] == 12000
     assert validated["segment_monitor_retention_days"] is None
     assert validated["timeout"] == 90
+    assert validated["report_max_sample_rows"] == 10
+    assert validated["artifact_save_mode"] == "on_failure"
+    assert validated["soap_retry_retries"] == 0
 
 
 def test_validate_config_rejects_missing_required_keys() -> None:
@@ -45,6 +48,9 @@ def test_validate_config_rejects_invalid_types() -> None:
     config["endpoint"] = 123
     config["max_segment_size"] = True
     config["segment_monitor_retention_days"] = "7"
+    config["report_max_sample_rows"] = False
+    config["artifact_save_mode"] = 1
+    config["soap_retry_retries"] = True
 
     with pytest.raises(ValueError) as excinfo:
         validate_config(config)
@@ -54,6 +60,9 @@ def test_validate_config_rejects_invalid_types() -> None:
     assert "endpoint': 'int'" in message
     assert "max_segment_size': 'bool'" in message
     assert "segment_monitor_retention_days': 'str'" in message
+    assert "report_max_sample_rows': 'bool'" in message
+    assert "artifact_save_mode': 'int'" in message
+    assert "soap_retry_retries': 'bool'" in message
 
 
 def test_validate_config_rejects_invalid_ranges() -> None:
@@ -61,6 +70,8 @@ def test_validate_config_rejects_invalid_ranges() -> None:
     config["max_segment_size"] = 0
     config["segment_monitor_retention_days"] = 0
     config["timeout"] = -1
+    config["report_max_sample_rows"] = 0
+    config["soap_retry_retries"] = -1
 
     with pytest.raises(ValueError) as excinfo:
         validate_config(config)
@@ -70,3 +81,17 @@ def test_validate_config_rejects_invalid_ranges() -> None:
     assert "max_segment_size': 0" in message
     assert "segment_monitor_retention_days': 0" in message
     assert "timeout': -1" in message
+    assert "report_max_sample_rows': 0" in message
+    assert "soap_retry_retries': -1" in message
+
+
+def test_validate_config_rejects_invalid_values() -> None:
+    config = _base_config()
+    config["artifact_save_mode"] = "sometimes"
+
+    with pytest.raises(ValueError) as excinfo:
+        validate_config(config)
+
+    message = str(excinfo.value)
+    assert "invalid values={" in message
+    assert "artifact_save_mode': 'sometimes'" in message

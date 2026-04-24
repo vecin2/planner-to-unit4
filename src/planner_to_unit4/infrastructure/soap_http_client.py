@@ -6,4 +6,4 @@ class HttpResponse(Protocol):
     text: str
 
 
-HttpPost = Callable[[str, str, dict[str, str], int], HttpResponse]
+HttpPost = Callable[[str, bytes, dict[str, str], int], HttpResponse]

@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta
+from html import escape
 from typing import Callable
+from typing import Literal
 from uuid import uuid4
 
 from planner_to_unit4.infrastructure.file_system import FileSystem
@@ -13,11 +15,31 @@ def _new_unique_id() -> str:
     return uuid4().hex
 
 
+RunStatus = Literal["COMPLETED", "FAILED"]
+
+
 @dataclass(frozen=True)
 class ArchiveFileResult:
     source_path: str
     archived_path: str
-    status: str = "ARCHIVED"
+    status: RunStatus
+    email_html_body: str
+    error_message: str
+
+    def is_success(self) -> bool:
+        return self.status == "COMPLETED"
+
+    def is_failed(self) -> bool:
+        return self.status == "FAILED"
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "source_path": self.source_path,
+            "archived_path": self.archived_path,
+            "email_html_body": self.email_html_body,
+            "error_message": self.error_message,
+        }
 
 
 @dataclass
@@ -35,9 +57,27 @@ class ArchiveFile:
         file_name = _build_archive_file_name(source_file_path, now_utc, self.id_factory())
         archived_path = f"{partition_path}/{file_name}"
 
-        self.fs.mkdirs(partition_path)
-        self.fs.mv(source_file_path, archived_path)
-        self.log_fn(f"Archived file: source={source_file_path} destination={archived_path}")
+        try:
+            self.fs.mkdirs(partition_path)
+            self.fs.mv(source_file_path, archived_path)
+            self.log_fn(f"Archived file: source={source_file_path} destination={archived_path}")
+        except Exception as exc:  # noqa: BLE001 - boundary IO failure
+            error_message = str(exc)
+            self.log_fn(
+                "Archive file failed: "
+                f"source={source_file_path} destination={archived_path} error={error_message}"
+            )
+            return ArchiveFileResult(
+                source_path=source_file_path,
+                archived_path=archived_path,
+                status="FAILED",
+                email_html_body=_render_archive_failure_html(
+                    source_file_path=source_file_path,
+                    archived_path=archived_path,
+                    error_message=error_message,
+                ),
+                error_message=error_message,
+            )
 
         if self.archive_retention_days is not None:
             try:
@@ -48,7 +88,13 @@ class ArchiveFile:
                     f"retention_days={self.archive_retention_days} error={exc}"
                 )
 
-        return ArchiveFileResult(source_path=source_file_path, archived_path=archived_path)
+        return ArchiveFileResult(
+            source_path=source_file_path,
+            archived_path=archived_path,
+            status="COMPLETED",
+            email_html_body="",
+            error_message="",
+        )
 
     def _apply_retention(self, now_utc: datetime) -> None:
         if self.archive_retention_days is None:
@@ -115,3 +161,29 @@ def _extract_partition_value(path: str, key: str) -> int | None:
     if not value.isdigit():
         return None
     return int(value)
+
+
+def _render_archive_failure_html(
+    *,
+    source_file_path: str,
+    archived_path: str,
+    error_message: str,
+) -> str:
+    return (
+        "<!doctype html>"
+        "<html><head><meta charset='utf-8' />"
+        "<meta name='viewport' content='width=device-width, initial-scale=1' />"
+        "<style>"
+        "body{font-family:Segoe UI,Arial,sans-serif;background:#f6f8fb;color:#1f2937;padding:16px;}"
+        ".card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;}"
+        "h1{margin:0 0 12px 0;font-size:20px;}"
+        "p{margin:6px 0;}"
+        ".error{margin-top:10px;padding:10px;border-radius:6px;background:#fbeaea;border:1px solid #f0b5b8;color:#842029;}"
+        "</style></head><body>"
+        "<article class='card'>"
+        "<h1>Planner Archive Result - Failed</h1>"
+        f"<p><strong>Source:</strong> {escape(source_file_path, quote=True)}</p>"
+        f"<p><strong>Destination:</strong> {escape(archived_path, quote=True)}</p>"
+        f"<div class='error'><strong>Error:</strong> {escape(error_message, quote=True)}</div>"
+        "</article></body></html>"
+    )

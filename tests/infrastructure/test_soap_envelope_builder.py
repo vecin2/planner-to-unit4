@@ -1,3 +1,5 @@
+import pytest
+
 from planner_to_unit4.infrastructure.soap_envelope_builder import (
     POSTBACK_FIELDS_IN_ORDER,
     build_postback_items,
@@ -8,6 +10,7 @@ from planner_to_unit4.infrastructure.soap_envelope_builder import (
 def test_build_postback_items_sets_required_fields() -> None:
     rows = [
         {
+            "record_no": 1151,
             "Client": "BI",
             "Description": "Test",
             "Account": "1000",
@@ -26,7 +29,7 @@ def test_build_postback_items_sets_required_fields() -> None:
 
     items = build_postback_items(rows)
 
-    assert items[0]["TransactionId"] == -1
+    assert items[0]["TransactionId"] == -1151
     assert items[0]["TransactionSetup"] == "STD"
     assert items[0]["Version"] == "ADJ"
     assert items[0]["Batch"] == "WKD"
@@ -35,9 +38,56 @@ def test_build_postback_items_sets_required_fields() -> None:
     assert items[0]["PeriodTo"] == "202601"
 
 
+def test_build_postback_items_sets_transaction_id_from_string_record_no() -> None:
+    items = build_postback_items(
+        [
+            {
+                "record_no": "42",
+                "Client": "BI",
+            }
+        ]
+    )
+
+    assert items[0]["TransactionId"] == -42
+
+
+def test_build_postback_items_raises_when_record_no_is_missing() -> None:
+    with pytest.raises(ValueError, match="record_no is required"):
+        build_postback_items(
+            [
+                {
+                    "Client": "BI",
+                }
+            ]
+        )
+
+
+def test_build_postback_items_raises_when_record_no_is_not_positive_integer() -> None:
+    with pytest.raises(ValueError, match="record_no must be a positive integer"):
+        build_postback_items(
+            [
+                {
+                    "record_no": "abc",
+                    "Client": "BI",
+                }
+            ]
+        )
+
+    with pytest.raises(ValueError, match="record_no must be a positive integer"):
+        build_postback_items(
+            [
+                {
+                    "record_no": 0,
+                    "Client": "BI",
+                }
+            ]
+        )
+
+
 def test_build_soap_envelope_respects_field_order() -> None:
     rows = [
         {
+            "record_no": 1,
             "Client": "BI",
             "Description": "Test",
             "Account": "1000",

@@ -19,12 +19,18 @@ class FakeFileSystem:
         self.rm_calls: list[tuple[str, bool]] = []
         self.ls_calls: list[str] = []
         self.ls_error: Exception | None = None
+        self.mkdirs_error: Exception | None = None
+        self.mv_error: Exception | None = None
 
     def mkdirs(self, path: str) -> None:
         self.mkdirs_calls.append(path)
+        if self.mkdirs_error is not None:
+            raise self.mkdirs_error
 
     def mv(self, source_path: str, destination_path: str) -> None:
         self.mv_calls.append((source_path, destination_path))
+        if self.mv_error is not None:
+            raise self.mv_error
 
     def ls(self, path: str) -> list[object]:
         self.ls_calls.append(path)
@@ -64,7 +70,11 @@ def test_archive_file_moves_to_partitioned_unique_path() -> None:
     ]
     assert result.archived_path == expected_archived_path
     assert result.source_path == "Files/FPA_Ingestion_Test/landing/Plan_Data.json"
-    assert result.status == "ARCHIVED"
+    assert result.status == "COMPLETED"
+    assert result.is_success() is True
+    assert result.is_failed() is False
+    assert result.email_html_body == ""
+    assert result.error_message == ""
     assert any("Archived file" in message for message in log_messages)
 
 
@@ -122,6 +132,62 @@ def test_archive_file_logs_warning_and_continues_when_retention_fails() -> None:
 
     result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
 
-    assert result.status == "ARCHIVED"
+    assert result.status == "COMPLETED"
+    assert result.is_success() is True
+    assert result.is_failed() is False
     assert len(fs.mv_calls) == 1
     assert any("Archive retention warning" in message for message in messages)
+
+
+def test_archive_file_returns_failed_outcome_with_email_html_when_move_fails() -> None:
+    fs = FakeFileSystem()
+    fs.mv_error = RuntimeError("move failure")
+    messages: list[str] = []
+    archiver = ArchiveFile(
+        fs=fs,
+        archive_root_path="Files/FPA_Ingestion_Test/archive",
+        archive_retention_days=10,
+        log_fn=messages.append,
+        clock=lambda: datetime(2026, 4, 20, 12, 0, 0),
+        id_factory=lambda: "abc123",
+    )
+
+    result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
+
+    assert result.status == "FAILED"
+    assert result.is_success() is False
+    assert result.is_failed() is True
+    assert result.error_message == "move failure"
+    assert "move failure" in result.email_html_body
+    assert any("Archive file failed" in message for message in messages)
+
+
+def test_archive_file_payload_has_stable_keys_for_success_and_failure() -> None:
+    success_archiver = ArchiveFile(
+        fs=FakeFileSystem(),
+        archive_root_path="Files/FPA_Ingestion_Test/archive",
+        archive_retention_days=None,
+        log_fn=lambda _message: None,
+        clock=lambda: datetime(2026, 4, 20, 12, 0, 0),
+        id_factory=lambda: "abc123",
+    )
+    success_result = success_archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
+
+    failing_fs = FakeFileSystem()
+    failing_fs.mv_error = RuntimeError("mv down")
+    failing_archiver = ArchiveFile(
+        fs=failing_fs,
+        archive_root_path="Files/FPA_Ingestion_Test/archive",
+        archive_retention_days=None,
+        log_fn=lambda _message: None,
+        clock=lambda: datetime(2026, 4, 20, 12, 0, 0),
+        id_factory=lambda: "abc123",
+    )
+    failure_result = failing_archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
+
+    success_payload = success_result.to_payload()
+    failure_payload = failure_result.to_payload()
+
+    assert set(success_payload) == set(failure_payload)
+    assert success_payload["status"] == "COMPLETED"
+    assert failure_payload["status"] == "FAILED"

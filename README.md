@@ -16,13 +16,16 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 
 ### File Archiver
 - moves one source file into a unique archive path under `yyyy=/mm=/dd=` partitions
-- returns archive result with source and destination paths
+- returns a standardized outcome with `status` (`COMPLETED` or `FAILED`) and `to_payload()`
 - applies optional archive retention cleanup
 
 ## Failure and Retention Behavior
 
-- Submitter failures bubble as a single summarized exception message. The message includes up to 5 failed segments and is capped at 4000 characters.
-- When `failed_request_fs` is provided, failed SOAP request payloads are written under the snapshot day folder in `failed_requests/`.
+- Submitter `run(...)` always returns a standardized outcome with `status` (`COMPLETED` or `FAILED`).
+- On failure, the outcome includes `to_payload()` fields for pipeline handoff, including `email_html_body`, `summary_text`, and segment counts.
+- Archiver `run(...)` also returns a standardized outcome with `status` (`COMPLETED` or `FAILED`) and `to_payload()` for notebook exit payloads.
+- On archive failure, `email_html_body` contains the exception details so it can be used directly in email activities.
+- When `artifact_fs` is provided, artifact persistence is controlled by `artifact_save_mode` (`on_failure`, `always`, `never`) and files are written under the snapshot day folder in `requests/` and `reports/`, with state appended to filenames.
 - Retention cleanup for monitor/archive logs warnings and continues processing if cleanup fails.
 
 ## Configuration
@@ -51,15 +54,18 @@ Optional config keys:
 | `max_segment_size` | `int` | `12000` | Max rows per SOAP request segment. Must be `> 0`. |
 | `timeout` | `int` | `90` | HTTP timeout in seconds. Must be `> 0`. |
 | `segment_monitor_retention_days` | `int \| None` | `None` | Optional monitor retention window in days. Must be `> 0` when set. |
+| `report_max_sample_rows` | `int` | `10` | Max number of failed rows to include as samples in failure reports. Must be `> 0`. |
+| `artifact_save_mode` | `str` | `on_failure` | Controls artifact writes when `artifact_fs` is provided. Allowed: `on_failure`, `always`, `never`. |
+| `soap_retry_retries` | `int` | `0` | Number of retry attempts after the first SOAP exception. Must be `>= 0`. Retries apply only to exceptions. |
 
 Runtime arguments (not in config):
 
-| Argument | Type | Description |
-| --- | --- | --- |
-| `spark` | Spark session | Used for source table reads and monitor writes. |
-| `log_fn` | `Callable[[str], None]` | Receives operational log lines. |
-| `budget_variance_rows_filter` | `Callable[[DataFrame], DataFrame] \| None` | Optional filter/transform. If omitted, rows are ordered by `record_no`. |
-| `failed_request_fs` | filesystem object \| `None` | Optional filesystem with `mkdirs` + `put` used to save failed SOAP requests. |
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `spark` | Spark session | - | Used for source table reads and monitor writes. |
+| `log_fn` | `Callable[[str], None]` | - | Receives operational log lines. |
+| `budget_variance_rows_filter` | `Callable[[DataFrame], DataFrame] \| None` | `None` | Optional filter/transform. If omitted, rows are ordered by `record_no`. |
+| `artifact_fs` | filesystem object \| `None` | `None` | Optional filesystem with `mkdirs` + `put` used to save request and report artifacts based on `artifact_save_mode`. |
 
 ### File Archiver
 
@@ -89,6 +95,38 @@ Runtime arguments (not in config):
 ### Submitter
 
 ```python
+import json
+
+from planner_to_unit4 import create_budget_variance_submitter
+
+submitter = create_budget_variance_submitter(
+    spark=spark,
+    config={
+        "source_table_name": "db.budget_variance_staging",
+        "version": "v1",
+        "batch": "b1",
+        "endpoint": "https://example.com/soap",
+        "username": "user",
+        "client": "bi",
+        "password": "secret",
+        "segment_monitoring_table": "db.segment_monitoring",
+        "artifact_save_mode": "on_failure",
+    },
+    log_fn=print,
+    artifact_fs=notebookutils.fs,
+)
+
+outcome = submitter.run(pipeline_run_id="run-123", snapshot_path="Files/.../plan_data.json")
+print(outcome.status)
+# For notebook->pipeline handoff:
+notebookutils.notebook.exit(json.dumps(outcome.to_payload()))
+```
+
+### Fabric Notebook -> Pipeline Exit Payload
+
+```python
+import json
+
 from planner_to_unit4 import create_budget_variance_submitter
 
 submitter = create_budget_variance_submitter(
@@ -102,16 +140,32 @@ submitter = create_budget_variance_submitter(
         "client": "bi",
         "password": "...",
         "segment_monitoring_table": "Workday_Ingestion.fpa.segment_monitoring",
+        "max_segment_size": 15000,
+        "timeout": 60,
     },
     log_fn=print,
+    failed_request_fs=notebookutils.fs,
 )
 
-submitter.run(pipeline_run_id="run-123", snapshot_path="Files/.../plan_data.json")
+outcome = submitter.run(
+    pipeline_run_id="run-123",
+    snapshot_path=json_file_archive_path,
+)
+
+payload = outcome.to_payload()
+print("Submission status:", payload["status"])
+
+# Pipeline consumes this JSON string.
+# If payload["status"] == "FAILED", use payload["email_html_body"]
+# in the Outlook Send Email activity.
+notebookutils.notebook.exit(json.dumps(payload))
 ```
 
 ### Archiver
 
 ```python
+import json
+
 from planner_to_unit4 import create_file_archiver
 
 archiver = create_file_archiver(
@@ -124,5 +178,10 @@ archiver = create_file_archiver(
 )
 
 result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
-print(result.archived_path)
+payload = result.to_payload()
+print(payload["status"])
+print(payload["archived_path"])
+
+# Pipeline consumes this JSON string.
+notebookutils.notebook.exit(json.dumps(payload))
 ```

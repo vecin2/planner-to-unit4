@@ -24,6 +24,10 @@ def main(
 ) -> ArchiveFile:
     """Create a configured file archiver.
 
+    The archiver `run(...)` method returns a standardized outcome object with
+    `status` (`COMPLETED` or `FAILED`) and a `to_payload()` method for
+    notebook-to-pipeline handoff.
+
     Runtime arguments (not part of ``config``):
     - ``fs``: filesystem object used for ``mkdirs``, ``mv``, ``ls``, ``rm``.
     - ``log_fn``: callable used to emit operational logs.
