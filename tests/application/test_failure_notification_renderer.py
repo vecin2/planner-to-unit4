@@ -14,7 +14,7 @@ def test_render_failure_notification_contains_html_summary() -> None:
         segments=[_segment(1, 1), _segment(2, 4), _segment(5, 5)],
         row_sample_limit=7,
     )
-    builder.mark_submitted(segment_index=1, message="Submitted", http_status=200)
+    builder.mark_submitted(segment_index=1, order_no="51", message="Submitted", http_status=200)
     builder.mark_failed(
         segment_index=2,
         http_status=400,
@@ -68,6 +68,7 @@ def test_render_failure_notification_contains_html_summary() -> None:
     assert "report-status-badge" not in notification.html_body
     assert "<font color='#991b1b'>FAILED</font>" in notification.html_body
     assert "Status: <span style='font-weight:700;color:#0b6b3d;'><font color='#0b6b3d'>Submitted</font></span>" in notification.html_body
+    assert "Order No: <strong style='color:#1f2937;'>51</strong>" in notification.html_body
     assert "Status: <span style='font-weight:700;color:#991b1b;'><font color='#991b1b'>Failed</font></span>" in notification.html_body
     assert "Status: <span style='font-weight:700;color:#5b6473;'><font color='#5b6473'>Skipped</font></span>" in notification.html_body
     assert "height:12px;line-height:12px;" in notification.html_body

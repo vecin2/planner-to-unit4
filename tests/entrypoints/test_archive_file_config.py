@@ -14,6 +14,7 @@ def test_validate_config_applies_defaults() -> None:
 
     assert validated["archive_root_path"] == "Files/FPA_Ingestion_Test/archive"
     assert validated["archive_retention_days"] is None
+    assert validated["archive_write_mode"] == "copy"
 
 
 def test_validate_config_rejects_missing_required_keys() -> None:
@@ -36,6 +37,7 @@ def test_validate_config_rejects_invalid_types() -> None:
     config = _base_config()
     config["archive_root_path"] = 123
     config["archive_retention_days"] = "7"
+    config["archive_write_mode"] = 1
 
     with pytest.raises(ValueError) as excinfo:
         validate_config(config)
@@ -44,6 +46,7 @@ def test_validate_config_rejects_invalid_types() -> None:
     assert "invalid types={" in message
     assert "archive_root_path': 'int'" in message
     assert "archive_retention_days': 'str'" in message
+    assert "archive_write_mode': 'int'" in message
 
 
 def test_validate_config_rejects_invalid_ranges() -> None:
@@ -56,3 +59,24 @@ def test_validate_config_rejects_invalid_ranges() -> None:
     message = str(excinfo.value)
     assert "invalid ranges={" in message
     assert "archive_retention_days': 0" in message
+
+
+def test_validate_config_rejects_invalid_values() -> None:
+    config = _base_config()
+    config["archive_write_mode"] = "rename"
+
+    with pytest.raises(ValueError) as excinfo:
+        validate_config(config)
+
+    message = str(excinfo.value)
+    assert "invalid values={" in message
+    assert "archive_write_mode': 'rename'" in message
+
+
+def test_validate_config_accepts_move_write_mode() -> None:
+    config = _base_config()
+    config["archive_write_mode"] = "move"
+
+    validated = validate_config(config)
+
+    assert validated["archive_write_mode"] == "move"

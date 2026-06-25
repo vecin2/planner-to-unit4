@@ -26,6 +26,7 @@ class SegmentFailureSummary:
     record_no_start: int | None
     record_no_end: int | None
     status: SegmentStatus
+    order_no: str | None
     http_status: int | None
     message: str | None
     skipped_reason: str | None
@@ -55,6 +56,7 @@ class SubmissionFailureReportBuilder:
                 record_no_start=_extract_record_no(segment[0]) if segment else None,
                 record_no_end=_extract_record_no(segment[-1]) if segment else None,
                 status="SUBMITTED",
+                order_no=None,
                 http_status=None,
                 message=None,
                 skipped_reason=None,
@@ -64,12 +66,18 @@ class SubmissionFailureReportBuilder:
         }
 
     def mark_submitted(
-        self, *, segment_index: int, message: str | None, http_status: int | None
+        self,
+        *,
+        segment_index: int,
+        order_no: str | None,
+        message: str | None,
+        http_status: int | None,
     ) -> None:
         state = self._states[segment_index]
         self._states[segment_index] = replace(
             state,
             status="SUBMITTED",
+            order_no=order_no,
             http_status=http_status,
             message=message,
             skipped_reason=None,
@@ -92,6 +100,7 @@ class SubmissionFailureReportBuilder:
         self._states[segment_index] = replace(
             state,
             status="FAILED",
+            order_no=None,
             http_status=http_status,
             message=message,
             skipped_reason=None,
@@ -104,6 +113,7 @@ class SubmissionFailureReportBuilder:
             self._states[segment_index] = replace(
                 state,
                 status="SKIPPED",
+                order_no=None,
                 http_status=None,
                 message=None,
                 skipped_reason=(

@@ -11,6 +11,7 @@ REQUIRED_KEYS = {
 
 OPTIONAL_DEFAULTS: dict[str, Any] = {
     "archive_retention_days": None,
+    "archive_write_mode": "copy",
 }
 
 ALLOWED_KEYS = REQUIRED_KEYS | set(OPTIONAL_DEFAULTS.keys())
@@ -29,7 +30,7 @@ def main(
     notebook-to-pipeline handoff.
 
     Runtime arguments (not part of ``config``):
-    - ``fs``: filesystem object used for ``mkdirs``, ``mv``, ``ls``, ``rm``.
+    - ``fs``: filesystem object used for ``mkdirs``, ``cp``, ``mv``, ``ls``, ``rm``.
     - ``log_fn``: callable used to emit operational logs.
 
     Config keys (validated by ``validate_config``):
@@ -38,12 +39,14 @@ def main(
 
     Optional
     - ``archive_retention_days`` (int | None, default ``None``)
+    - ``archive_write_mode`` (str, default ``copy``; allowed ``copy`` or ``move``)
     """
     validated = validate_config(config)
     return ArchiveFile(
         fs=fs,
         archive_root_path=validated["archive_root_path"],
         archive_retention_days=validated["archive_retention_days"],
+        archive_write_mode=validated["archive_write_mode"],
         log_fn=log_fn,
     )
 
@@ -56,6 +59,7 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     - missing required keys are rejected
     - required keys must be strings
     - ``archive_retention_days`` is optional and must be integer > 0
+    - ``archive_write_mode`` must be one of ``copy`` or ``move``
 
     Raises ``ValueError`` with a structured summary when validation fails.
     """
@@ -63,6 +67,7 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
     unknown_keys = sorted(set(config.keys()) - ALLOWED_KEYS)
     invalid_types: dict[str, str] = {}
     invalid_ranges: dict[str, object] = {}
+    invalid_values: dict[str, object] = {}
 
     for key in sorted(REQUIRED_KEYS):
         if key not in config:
@@ -81,18 +86,29 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
         elif archive_retention_days <= 0:
             invalid_ranges["archive_retention_days"] = archive_retention_days
 
-    if missing_keys or unknown_keys or invalid_types or invalid_ranges:
+    archive_write_mode = config.get(
+        "archive_write_mode",
+        OPTIONAL_DEFAULTS["archive_write_mode"],
+    )
+    if not isinstance(archive_write_mode, str):
+        invalid_types["archive_write_mode"] = type(archive_write_mode).__name__
+    elif archive_write_mode not in {"copy", "move"}:
+        invalid_values["archive_write_mode"] = archive_write_mode
+
+    if missing_keys or unknown_keys or invalid_types or invalid_ranges or invalid_values:
         raise ValueError(
             "Invalid config: "
             f"missing keys={missing_keys}; "
             f"unknown keys={unknown_keys}; "
             f"invalid types={invalid_types}; "
-            f"invalid ranges={invalid_ranges}"
+            f"invalid ranges={invalid_ranges}; "
+            f"invalid values={invalid_values}"
         )
 
     return {
         "archive_root_path": config["archive_root_path"],
         "archive_retention_days": archive_retention_days,
+        "archive_write_mode": archive_write_mode,
     }
 
 

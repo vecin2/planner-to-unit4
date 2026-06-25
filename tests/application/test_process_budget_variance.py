@@ -672,6 +672,7 @@ def test_process_budget_variance_artifact_save_mode_always_saves_success_artifac
     report_path, report_payload, report_overwrite = artifact_fs.put_calls[1]
     assert report_path.endswith("_fabric-run-702_completed.html")
     assert "Planner Upload Result" in report_payload
+    assert "Order No: <strong style='color:#1f2937;'>ok-order-1</strong>" in report_payload
     assert report_overwrite is True
 
 

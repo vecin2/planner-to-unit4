@@ -172,6 +172,12 @@ def _render_segment(
             f"HTTP: <strong style='color:#1f2937;'>{summary.http_status}</strong>"
             "</span>"
         )
+    if summary.order_no:
+        header_items.append(
+            "<span style='font-size:13px;line-height:1.4;color:#5b6473;'>"
+            f"Order No: <strong style='color:#1f2937;'>{_escape(summary.order_no)}</strong>"
+            "</span>"
+        )
     return (
         f"{spacer}"
         "<div class='segment' style='border:1px solid #d1d5db;overflow:hidden;'>"
