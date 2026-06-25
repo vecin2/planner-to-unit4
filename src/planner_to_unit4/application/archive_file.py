@@ -16,6 +16,7 @@ def _new_unique_id() -> str:
 
 
 RunStatus = Literal["COMPLETED", "FAILED"]
+ArchiveWriteMode = Literal["copy", "move"]
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class ArchiveFileResult:
             "status": self.status,
             "source_path": self.source_path,
             "archived_path": self.archived_path,
+            "archived_path_relative": _to_fabric_root_relative_path(self.archived_path),
             "email_html_body": self.email_html_body,
             "error_message": self.error_message,
         }
@@ -48,6 +50,7 @@ class ArchiveFile:
     archive_root_path: str
     log_fn: Callable[[str], None]
     archive_retention_days: int | None = None
+    archive_write_mode: ArchiveWriteMode = "copy"
     clock: Callable[[], datetime] = datetime.utcnow
     id_factory: Callable[[], str] = _new_unique_id
 
@@ -59,12 +62,19 @@ class ArchiveFile:
 
         try:
             self.fs.mkdirs(partition_path)
-            self.fs.mv(source_file_path, archived_path)
-            self.log_fn(f"Archived file: source={source_file_path} destination={archived_path}")
+            if self.archive_write_mode == "copy":
+                self.fs.cp(source_file_path, archived_path)
+            else:
+                self.fs.mv(source_file_path, archived_path)
+            self.log_fn(
+                "Archived file: "
+                f"mode={self.archive_write_mode} source={source_file_path} destination={archived_path}"
+            )
         except Exception as exc:  # noqa: BLE001 - boundary IO failure
             error_message = str(exc)
             self.log_fn(
                 "Archive file failed: "
+                f"mode={self.archive_write_mode} "
                 f"source={source_file_path} destination={archived_path} error={error_message}"
             )
             return ArchiveFileResult(
@@ -187,3 +197,11 @@ def _render_archive_failure_html(
         f"<div class='error'><strong>Error:</strong> {escape(error_message, quote=True)}</div>"
         "</article></body></html>"
     )
+
+
+def _to_fabric_root_relative_path(path: str) -> str:
+    normalized = path.lstrip("/")
+    for root in ("Files/", "Tables/"):
+        if normalized.startswith(root):
+            return normalized[len(root) :]
+    return path

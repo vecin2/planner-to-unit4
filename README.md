@@ -5,7 +5,7 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 ## What This Library Does
 - submit budget variance rows from Spark tables into Unit4 SOAP endpoints
 - record per-segment submission outcomes in a monitoring table
-- move source files into date-partitioned archive paths with optional retention cleanup
+- copy source files into date-partitioned archive paths with optional retention cleanup
 
 ## Happy Path Flows
 
@@ -15,7 +15,7 @@ Pipeline support library for migrating planner data managed in Workday into Unit
 - records each successful segment in the monitor table with `status=SUBMITTED`
 
 ### File Archiver
-- moves one source file into a unique archive path under `yyyy=/mm=/dd=` partitions
+- copies one source file into a unique archive path under `yyyy=/mm=/dd=` partitions
 - returns a standardized outcome with `status` (`COMPLETED` or `FAILED`) and `to_payload()`
 - applies optional archive retention cleanup
 
@@ -75,19 +75,20 @@ Required config keys:
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `archive_root_path` | `str` | Root archive folder. Files are moved into date partitions. |
+| `archive_root_path` | `str` | Root archive folder. Files are copied into date partitions by default. |
 
 Optional config keys:
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `archive_retention_days` | `int \| None` | `None` | Optional archive retention window in days. Must be `> 0` when set. |
+| `archive_write_mode` | `str` | `copy` | Archive transfer mode. Allowed: `copy`, `move`. |
 
 Runtime arguments (not in config):
 
 | Argument | Type | Description |
 | --- | --- | --- |
-| `fs` | filesystem object | Used for `mkdirs`, `mv`, `ls`, and `rm`. |
+| `fs` | filesystem object | Used for `mkdirs`, `cp`, `mv`, `ls`, and `rm`. |
 | `log_fn` | `Callable[[str], None]` | Receives operational log lines. |
 
 ## Minimal Examples
@@ -173,6 +174,7 @@ archiver = create_file_archiver(
     config={
         "archive_root_path": "Files/FPA_Ingestion_Test/archive",
         "archive_retention_days": 30,
+        "archive_write_mode": "copy",
     },
     log_fn=print,
 )
@@ -181,6 +183,7 @@ result = archiver.run("Files/FPA_Ingestion_Test/landing/Plan_Data.json")
 payload = result.to_payload()
 print(payload["status"])
 print(payload["archived_path"])
+print(payload["archived_path_relative"])  # use this with Copy activity root="Files"
 
 # Pipeline consumes this JSON string.
 notebookutils.notebook.exit(json.dumps(payload))

@@ -1,6 +1,7 @@
 import pytest
 
 from planner_to_unit4.entrypoints.submit_budget_variance import validate_config
+from planner_to_unit4.entrypoints.submit_budget_variance import _format_submitter_config_log
 
 
 def _base_config() -> dict[str, object]:
@@ -95,3 +96,18 @@ def test_validate_config_rejects_invalid_values() -> None:
     message = str(excinfo.value)
     assert "invalid values={" in message
     assert "artifact_save_mode': 'sometimes'" in message
+
+
+def test_format_submitter_config_log_redacts_password() -> None:
+    validated = validate_config(_base_config())
+
+    message = _format_submitter_config_log(
+        validated=validated,
+        artifact_fs_enabled=True,
+        rows_filter_enabled=False,
+    )
+
+    assert "password='***'" in message
+    assert "password='secret'" not in message
+    assert "artifact_fs_enabled=True" in message
+    assert "rows_filter_enabled=False" in message

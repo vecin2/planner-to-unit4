@@ -12,7 +12,7 @@ def _segment(record_start: int, record_end: int) -> list[dict]:
 def test_build_failure_report_groups_errors_by_column_and_message() -> None:
     builder = SubmissionFailureReportBuilder(segments=[_segment(1, 2), _segment(3, 5)])
 
-    builder.mark_submitted(segment_index=1, message="Submitted", http_status=200)
+    builder.mark_submitted(segment_index=1, order_no="51", message="Submitted", http_status=200)
     builder.mark_failed(
         segment_index=2,
         http_status=400,
@@ -38,7 +38,9 @@ def test_build_failure_report_groups_errors_by_column_and_message() -> None:
     assert report.failed_segments == 1
     assert report.skipped_segments == 0
     assert report.summaries[0].status == "SUBMITTED"
+    assert report.summaries[0].order_no == "51"
     assert report.summaries[1].status == "FAILED"
+    assert report.summaries[1].order_no is None
     assert report.summaries[1].record_no_start == 3
     assert report.summaries[1].record_no_end == 5
     assert report.summaries[1].error_groups[0].column == "dim_4"
@@ -51,7 +53,7 @@ def test_mark_skipped_after_marks_remaining_segments() -> None:
         segments=[_segment(1, 1), _segment(2, 2), _segment(3, 3)],
     )
 
-    builder.mark_submitted(segment_index=1, message="Submitted", http_status=200)
+    builder.mark_submitted(segment_index=1, order_no="52", message="Submitted", http_status=200)
     builder.mark_failed(
         segment_index=2,
         http_status=None,
@@ -63,6 +65,9 @@ def test_mark_skipped_after_marks_remaining_segments() -> None:
     report = builder.build_failure_report(pipeline_run_id="run-2")
 
     assert [summary.status for summary in report.summaries] == ["SUBMITTED", "FAILED", "SKIPPED"]
+    assert report.summaries[0].order_no == "52"
+    assert report.summaries[1].order_no is None
+    assert report.summaries[2].order_no is None
     assert report.summaries[2].skipped_reason == (
         "Skipped: not attempted due to fail-fast after segment 2."
     )

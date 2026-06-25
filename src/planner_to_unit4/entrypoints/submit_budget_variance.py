@@ -87,6 +87,13 @@ def main(
     import requests
 
     validated = validate_config(config)
+    log_fn(
+        _format_submitter_config_log(
+            validated=validated,
+            artifact_fs_enabled=artifact_fs is not None,
+            rows_filter_enabled=budget_variance_rows_filter is not None,
+        )
+    )
     reader = SparkBudgetVarianceReader(
         spark=spark,
         table_name=validated["source_table_name"],
@@ -237,3 +244,22 @@ def validate_config(config: dict[str, object]) -> dict[str, object]:
 
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _format_submitter_config_log(
+    *,
+    validated: dict[str, object],
+    artifact_fs_enabled: bool,
+    rows_filter_enabled: bool,
+) -> str:
+    redacted = dict(validated)
+    redacted["password"] = "***"
+    config_items = ", ".join(
+        f"{key}={redacted[key]!r}" for key in sorted(redacted)
+    )
+    return (
+        "Configured budget variance submitter: "
+        f"{config_items}, "
+        f"artifact_fs_enabled={artifact_fs_enabled}, "
+        f"rows_filter_enabled={rows_filter_enabled}"
+    )

@@ -208,6 +208,7 @@ class SubmitBudgetVariance:
             )
             report_builder.mark_submitted(
                 segment_index=segment_index,
+                order_no=order_no,
                 message=message,
                 http_status=http_status,
             )
